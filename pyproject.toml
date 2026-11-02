@@ -20,5 +20,8 @@ autopsy = "autopsy.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+autopsy = ["rates/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,39 @@
+{
+  "broker": "zerodha",
+  "source_url": "https://zerodha.com/charges/",
+  "accessed": "2026-11-02",
+  "notes": [
+    "Ordinary NSE cash equities, resident retail rates; excludes ETF-specific exemptions, BSE and MTF.",
+    "Turnover rates are fractions, monetary caps and DP are INR. Brokerage is min(cap, rate * notional) per executed order.",
+    "NSE exchange charge is INR 307/crore INCLUDING IPFT INR 0.01/crore; see https://nsearchives.nseindia.com/content/circulars/FA73061.pdf . IPFT is disclosed, never added again.",
+    "GST is 18% of brokerage + exchange + SEBI. DP is INR 15.34 INCLUDING GST, once per scrip per sell day; standard tariff before account-holder discounts."
+  ],
+  "segment_rates": {
+    "intraday_equity": {
+      "brokerage_rate": 0.0003,
+      "brokerage_cap": 20,
+      "stt_buy": 0,
+      "stt_sell": 0.00025,
+      "exchange_rate": 0.0000307,
+      "sebi_rate": 0.000001,
+      "ipft_rate": 0.000000001,
+      "gst_rate": 0.18,
+      "stamp_buy": 0.00003,
+      "stamp_sell": 0,
+      "dp_sell": 0
+    },
+    "delivery_equity": {
+      "brokerage_rate": 0,
+      "brokerage_cap": 0,
+      "stt_buy": 0.001,
+      "stt_sell": 0.001,
+      "exchange_rate": 0.0000307,
+      "sebi_rate": 0.000001,
+      "ipft_rate": 0.000000001,
+      "gst_rate": 0.18,
+      "stamp_buy": 0.00015,
+      "stamp_sell": 0,
+      "dp_sell": 15.34
+    }
+  }
+}
