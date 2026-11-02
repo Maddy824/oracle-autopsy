@@ -71,7 +71,9 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
     if isinstance(folds, bool) or not isinstance(folds, int) or folds < 1:
         raise ValueError("folds must be a positive integer")
     dev = prices.loc[prices.index < dev_end].copy()
-    dev.attrs = {}
+    # Event evidence and the independent schedule must survive window slicing.
+    dev.attrs = {key: value for key, value in prices.attrs.items()
+                 if key in {"events", "expected_bars", "bar_interval"}}
     if dev.empty or not dev.index.is_monotonic_increasing:
         raise ValueError("ordered development bars required")
     days = dev.index.normalize().unique()
@@ -96,6 +98,7 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
             for fold in range(folds):
                 start, end = boundaries[fold:fold + 2]
                 history = dev.loc[dev.index < end]
+                data_check = strategy.data_check(history) if strategy.data_check else None
                 features = strategy.features(history, params)
                 signals = [signal for signal in strategy.signals(history, features, params)
                            if start <= signal.time < end]
@@ -107,9 +110,12 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
                     score, profit, status = sharpe(pnl / prior), float(pnl.sum()), "PASS"
                 except MinTradesError:
                     score, profit, status = None, None, "CAN'T TELL"
+                if data_check is not None and data_check.verdict != "PASS":
+                    score, profit, status = None, None, data_check.verdict
                 results.append(FoldResult(strategy.name, strategy.mode, params.copy(), base, fold,
                                           start, end, score, profit, status, str(log.path.resolve()), folds))
-                metrics.append({"fold": fold, "net_sharpe": score, "net_profit": profit, "verdict": status})
+                metrics.append({"fold": fold, "net_sharpe": score, "net_profit": profit, "verdict": status,
+                                **({"data_check": data_check.evidence} if data_check else {})})
             log.append(strategy.name, params, window, {"status": "complete", "attempt": attempt_head,
                                                        "base_slippage_bps": base, "folds": metrics})
     return results

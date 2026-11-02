@@ -21,7 +21,9 @@ def hash_prices(prices):
     # Explicit schema, timestamps and values; no pandas-version-dependent hash.
     return _digest({"columns": columns, "index": [time.isoformat() for time in prices.index],
                     "values": prices[columns].values.tolist(),
-                    "expected_bars": prices.attrs.get("expected_bars")})
+                    "expected_bars": prices.attrs.get("expected_bars"),
+                    "events": prices.attrs.get("events"),
+                    "bar_interval": prices.attrs.get("bar_interval")})
 
 
 class Lock:
