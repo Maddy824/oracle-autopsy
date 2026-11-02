@@ -124,6 +124,8 @@ def decide(pick, locked_record, checks, lock):
     if strategy is None or strategy.mode != pick.mode:
         checks.append(CheckResult("strategy", "FAIL", {"reason": "pick is not a registered strategy"}))
         return _finish(checks, stats)
+    if strategy.data_check is not None:
+        checks.append(strategy.data_check(record.prices))
     feature_fn = lambda prices: strategy.features(prices, pick.params)
     names = {check.name for check in checks}
     if "lookahead" not in names:

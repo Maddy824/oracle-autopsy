@@ -1,0 +1,5 @@
+SYMBOL,COMPANY NAME,SUBJECT,DETAILS,ATTACHMENT,XBRL,BROADCAST DATE/TIME,Exchange Received Time,Exchange Dissemination Time,Time Taken
+ALPHA,Invented Alpha Limited,Financial Results,Invented quarterly financial results,https://example.invalid/alpha-results.pdf,,01-Jan-2025 09:58:00,01-Jan-2025 09:58:00,01-Jan-2025 10:01:00,00:03:00
+ALPHA,Invented Alpha Limited,Board Meeting Intimation,Invented meeting scheduled for 03-Jan-2025,https://example.invalid/alpha-meeting.pdf,,02-Jan-2025 08:50:00,02-Jan-2025 08:50:00,02-Jan-2025 09:00:00,00:10:00
+BETA,Invented Beta Limited,Financial Results,Invented financial results with unavailable publication time,https://example.invalid/beta-results.pdf,,02-Jan-2025 10:00:00,02-Jan-2025 10:00:00,,
+ALPHA,Invented Alpha Limited,Investor Presentation,Invented unrelated presentation,https://example.invalid/presentation.pdf,,02-Jan-2025 11:00:00,02-Jan-2025 11:00:00,02-Jan-2025 11:01:00,00:01:00

@@ -11,6 +11,7 @@ from typing import Literal
 import pandas as pd
 
 from autopsy.engine import Signal
+from autopsy.checks import CheckResult
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class Strategy:
     params_grid: Mapping[str, Sequence]
     features: Callable[[pd.DataFrame, dict], pd.DataFrame]
     signals: Callable[[pd.DataFrame, pd.DataFrame, dict], list[Signal]]
+    data_check: Callable[[pd.DataFrame], CheckResult] | None = None
 
     def __post_init__(self):
         # Copy before freezing so callers cannot mutate a registered grid through
@@ -29,10 +31,10 @@ class Strategy:
         }))
 
 
-from autopsy.strategies import intraday, swing  # noqa: E402
+from autopsy.strategies import events, intraday, swing  # noqa: E402
 
 
-REGISTRY: Mapping[str, Strategy] = MappingProxyType({
+_base_registry = {
     strategy.name: strategy for strategy in (
         Strategy("orb", "intraday", {"minutes": [15, 30]}, intraday.orb_features, intraday.orb_signals),
         Strategy("vwap_revert", "intraday", {"deviation": [1.0, 1.5, 2.0]}, intraday.vwap_features, intraday.vwap_signals),
@@ -41,8 +43,20 @@ REGISTRY: Mapping[str, Strategy] = MappingProxyType({
         Strategy("nday_breakout", "swing", {"n": [20, 55]}, swing.breakout_features, swing.breakout_signals),
         Strategy("trend_pullback", "swing", {"ma": [50, 100], "pullback": [3, 5]}, swing.pullback_features, swing.pullback_signals),
         Strategy("short_reversal", "swing", {"lookback": [3, 5]}, swing.reversal_features, swing.reversal_signals),
+        Strategy("earnings_continuation", "swing", {"holding_days": [1, 3, 5], "delay": events.DELAYS},
+                 events.earnings_features, events.earnings_signals, events.earnings_data_check),
+        Strategy("post_results_orb", "intraday", {"delay": events.DELAYS},
+                 events.post_results_features, events.post_results_signals, events.results_data_check),
+        Strategy("block_buy_continuation", "swing", {"delay": events.DELAYS},
+                 events.deals_features, events.deals_signals, events.deals_data_check),
     )
+}
+_filtered = [events.results_day_filter(strategy) for strategy in _base_registry.values()
+             if strategy.mode == "intraday"]
+REGISTRY: Mapping[str, Strategy] = MappingProxyType({
+    **_base_registry, **{strategy.name: strategy for strategy in _filtered},
 })
+del _base_registry, _filtered
 
 
 def registry_hash() -> str:
@@ -52,9 +66,11 @@ def registry_hash() -> str:
     helpers must invalidate a lock just as direct callback edits do.
     """
     records = []
-    sources = {__name__: inspect.getsource(inspect.getmodule(registry_hash))}
+    from autopsy.news import events as event_records, nse_filings
+    sources = {module.__name__: inspect.getsource(module)
+               for module in (inspect.getmodule(registry_hash), event_records, nse_filings)}
     for key, strategy in sorted(REGISTRY.items()):
-        callbacks = (strategy.features, strategy.signals)
+        callbacks = (strategy.features, strategy.signals) + ((strategy.data_check,) if strategy.data_check else ())
         records.append({
             "key": key, "name": strategy.name, "mode": strategy.mode,
             "grid": {name: list(values) for name, values in strategy.params_grid.items()},

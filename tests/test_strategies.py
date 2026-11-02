@@ -28,9 +28,15 @@ VARIANTS = [
 
 
 def test_registry_frozen():
-    assert set(REGISTRY) == set(GRIDS)
+    # Task 10 adds three event rules plus intraday results-filter trials.
+    assert set(REGISTRY) == set(GRIDS) | {
+        "earnings_continuation", "post_results_orb", "block_buy_continuation",
+        "orb+results_filter", "vwap_revert+results_filter", "first_hour_momentum+results_filter",
+        "gap_play+results_filter", "post_results_orb+results_filter",
+    }
     counts = {"intraday": 0, "swing": 0}
-    for name, strategy in REGISTRY.items():
+    for name in GRIDS:
+        strategy = REGISTRY[name]
         assert strategy.name == name
         assert dict(strategy.params_grid) == GRIDS[name]
         counts[strategy.mode] += np.prod([len(values) for values in strategy.params_grid.values()])
