@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.hypothesis/
+build/
+dist/
+.DS_Store
+
+# Private market data and credentials must never enter the repository.
+*.parquet
+*.csv
+!tests/fixtures/**/*.csv
+!tests/fixtures/*.csv
+.env*
+*token*
+
+# Research state belongs outside the repository, even during development.
+data/
+oracle-autopsy-data/
+trial_log*
+trials.jsonl
+lock.json
+locks/
