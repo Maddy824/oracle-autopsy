@@ -12,9 +12,8 @@ its last observed close is carried forward; future prices are never used.
 Unmatched fills and duplicate symbol/time bars are rejected. Aware timestamps
 are converted to Asia/Kolkata; naive timestamps are rejected.
 
-Execution, settlement, costs, research selection and verdict checks are included.
-The CLI currently exposes only the Task 9 historical-data fetch command; the
-broader research/report CLI remains a later task.
+Execution, settlement, costs, research selection, verdict checks and an offline
+HTML report are included. The CLI connects the complete local workflow.
 
 Requires Python 3.11+:
 
@@ -30,7 +29,54 @@ this repository: `AUTOPSY_DATA_DIR` defaults to `~/oracle-autopsy-data`.
 The Upstox client uses `~/.config/oracle-autopsy/upstox_analytics_token`
 (mode 600). Never commit or print credentials or real NSE data. Tests use
 synthetic data only. The optional `oracle` extra supplies `gymnasium` for the
-later case study.
+Oracle case study.
+
+## Local workflow
+
+```sh
+autopsy data synthetic
+autopsy research run --mode intraday
+autopsy lock create
+autopsy holdout open
+autopsy report --out out/synthetic-report.html
+autopsy case oracle --report out/oracle-report.html
+```
+
+Exit codes are 0 when no check is FAIL, 1 when any check is FAIL, and 2 for
+setup errors. A NO-GO containing only CAN'T TELL checks exits 0. The seeded
+random-walk demo and Oracle case intentionally produce NO-GO; continue to the
+report command after the holdout command exits 1. Install `.[oracle]` to run
+the copied Oracle case from this checkout.
+
+The CLI demo uses 520 invented weekday sessions, 09:15–10:25 IST at five-minute
+intervals, with seed 17. These short sessions keep the full CPU workflow quick;
+they are not an NSE calendar or evidence about market returns. Research tries
+the registered parameter and slippage grids on development folds, logs missing
+event evidence as CAN'T TELL, and seals the last twelve calendar months. Each
+opening is recorded; a second opening produces FAIL. Rendering a report does
+not reopen the holdout. Locks refuse overlapping prior windows.
+
+Import manually downloaded data with `autopsy data import-nse <csv…>` and
+`autopsy events import <csv…>`; event imports also accept
+`--kind bulk_deal` or `--kind block_deal`. Daily price files support swing
+research (`--mode swing`), not intraday validation. Imported CSV copies,
+snapshots, the session manifest, trial history, locks and evaluation records
+all live under `AUTOPSY_DATA_DIR`.
+
+An optional `research run --benchmark-symbol <symbol>` identifies a Nifty 50
+ETF in the price input and excludes it from strategy trades. The report shows
+its buy-and-hold curve normalized to the same capital, before ETF costs and
+tax. Without ETF data, comparison is explicitly unavailable; synthetic prices
+are never presented as real ETF observations. Gross/net and cost sensitivity
+hold observed fills and quantities fixed. The verdict uses the actual run at
+doubled slippage. The separate intraday business-income illustration defaults
+to a 30% slab rate (`report --slab-rate 30` or the report's local input); swing
+uses 20% STCG. Neither tax illustration changes a verdict.
+
+Reports contain inline CSS, Python-generated SVG and local JavaScript, with
+no external URLs or resources. Select chart points with a click or Enter to
+highlight fills in the ledger. The layout supports 360-pixel screens and the
+system dark-mode preference. No server is needed.
 
 ## Upstox data
 
@@ -79,7 +125,7 @@ records supported intervals, availability and request limits. All minute
 requests use calendar-month chunks; HTTP 429 gets three retries after 1, 2 and
 4 seconds. Verified request caches live under `AUTOPSY_DATA_DIR/upstox`.
 
-The minimal CLI is `autopsy data fetch-upstox --symbols <text-file> --from
+The fetch command is `autopsy data fetch-upstox --symbols <text-file> --from
 <YYYY-MM-DD> [--to <YYYY-MM-DD>]`: one cash instrument key per line; defaults to
 five-minute bars through yesterday IST. Missing/rejected/expired tokens give
 setup instructions and exit 2 without a traceback. Tests use only invented
