@@ -181,9 +181,21 @@ def run_backtest(
         last_close.update(zip(bars.symbol, bars.close))
         equity.append(cash + sum(qty * last_close[symbol] for symbol, qty in positions.items()))
 
-    return RunRecord(
+    record = RunRecord(
         fills,
         pd.Series(equity, index=prices.index.unique(), dtype=float, name="equity"),
         prices,
         float(capital),
     )
+    # Statistics must reprice with this exact execution configuration. Plain
+    # dictionaries survive pandas attrs copies (RateTable contains proxies).
+    record.reported_equity.attrs["autopsy_execution"] = {
+        "mode": mode,
+        "slippage_bps": float(slippage_bps),
+        "rates": {
+            "broker": rates.broker, "source_url": rates.source_url,
+            "accessed": rates.accessed,
+            "segment_rates": {name: dict(values) for name, values in rates.segment_rates.items()},
+        },
+    }
+    return record
