@@ -12,6 +12,7 @@ import pandas as pd
 
 from autopsy.calendar import _intraday_closes
 from autopsy.costs import RateTable, trade_costs
+from autopsy.data.corporate import apply_share_actions
 from autopsy.types import Fill, RunRecord, _TIMEZONE, _validate_start_cash, _validated_prices
 
 
@@ -133,6 +134,7 @@ def run_backtest(
                 unsettled += max(0.0, qty * price - fee)
 
     for time, bars in prices.groupby(level=0, sort=True):
+        apply_share_actions(positions, bars)
         day = time.normalize()
         if day != current_day:
             # Every new date in these bars is the next observed trading day.

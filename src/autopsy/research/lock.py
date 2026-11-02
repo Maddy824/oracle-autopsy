@@ -16,6 +16,8 @@ from autopsy.strategies import registry_hash as current_registry_hash
 
 def hash_prices(prices):
     columns = ["symbol", "open", "high", "low", "close", "volume"]
+    if "share_multiplier" in prices:
+        columns.append("share_multiplier")
     # Explicit schema, timestamps and values; no pandas-version-dependent hash.
     return _digest({"columns": columns, "index": [time.isoformat() for time in prices.index],
                     "values": prices[columns].values.tolist(),
