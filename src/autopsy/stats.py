@@ -1,6 +1,6 @@
 """Descriptive statistics and seeded, CPU-only research baselines."""
 
-from math import ceil, e, isfinite, sqrt
+from math import ceil, e, isclose, isfinite, sqrt
 from numbers import Integral
 from statistics import NormalDist
 
@@ -27,9 +27,16 @@ def _round_trips(record):
         entry = pending.pop(fill.symbol, None)
         if entry is None:
             pending[fill.symbol] = fill
-        elif entry.side == fill.side or entry.qty != fill.qty or entry.time >= fill.time:
-            raise ValueError("fills must describe whole-position round trips")
         else:
+            factor = 1.
+            if "share_multiplier" in record.prices:
+                between = record.prices[(record.prices.symbol == fill.symbol)
+                                        & (record.prices.index > entry.time)
+                                        & (record.prices.index <= fill.time)]
+                factor = float(between.share_multiplier.prod())
+            if (entry.side == fill.side or entry.time >= fill.time
+                    or not isclose(entry.qty * factor, fill.qty, rel_tol=0, abs_tol=1e-9)):
+                raise ValueError("fills must describe whole-position round trips")
             trades.append((entry, fill))
     if len(trades) < 30:
         raise MinTradesError(f"at least 30 completed trades required; got {len(trades)}")
@@ -143,7 +150,8 @@ def _cost_curve(side, segment, rates):
 def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
     """Net PnL of independent random round trips, conditional on actual trades.
 
-    Preserve each completed trade's symbol, side and whole-share quantity.
+    Preserve each completed trade's symbol, side and entry whole-share quantity.
+    Exit quantities follow corporate actions in the sampled holding interval.
     Intraday holds retain exact elapsed time and stay inside the engine's
     observed-session cutoff (including short/evening sessions). Swing holds
     retain the number of observed symbol bars, so weekends do not lengthen a
@@ -180,7 +188,7 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
           - trade_costs("SELL", 1., segment, rates, symbol_sold_today=True).total)
     rng = np.random.default_rng(seed)
     result = np.zeros(runs)
-    pools, bar_data, sold_days = {}, {}, {}
+    pools, bar_data, sold_days, share_factors = {}, {}, {}, {}
     row = np.arange(runs)
     for entry, exit in trades:
         symbol = entry.symbol
@@ -202,6 +210,11 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
             deadlines = (pd.DatetimeIndex([cutoffs[symbol, day] for day in days])
                          if mode == "intraday" else None)
             bar_data[symbol] = (days, day_codes, deadlines, bars.open.to_numpy(dtype=float))
+            factors = (bars.share_multiplier.to_numpy(dtype=float) if "share_multiplier" in bars
+                       else np.ones(len(bars)))
+            if not np.isfinite(factors).all() or (factors <= 0).any():
+                raise ValueError("invalid corporate action factors")
+            share_factors[symbol] = factors.cumprod()
             if dp:
                 sold_days[symbol] = np.zeros((runs, len(unique_days)), dtype=bool)
         days, day_codes, deadlines, opens = bar_data[symbol]
@@ -221,9 +234,14 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
             pools[key] = (starts, ends)
         starts, ends = pools[key]
         choices = rng.integers(len(starts), size=runs)
+        cumulative = share_factors[symbol]
+        exit_qty = entry.qty * cumulative[ends[choices]] / cumulative[starts[choices]]
+        if not np.isclose(exit_qty, np.rint(exit_qty), rtol=0, atol=1e-9).all():
+            raise ValueError("sampled corporate action needs fractional-share cash-in-lieu data")
         for fill, indices in ((entry, starts[choices]), (exit, ends[choices])):
             direction = 1 if fill.side == "BUY" else -1
-            turnover = fill.qty * opens[indices] * (1 + direction * slippage / 10_000)
+            qty = entry.qty if fill is entry else np.rint(exit_qty)
+            turnover = qty * opens[indices] * (1 + direction * slippage / 10_000)
             cap, lower, upper = curves[fill.side]
             fee = np.minimum(turnover, cap) * lower + np.maximum(turnover - cap, 0) * upper
             if dp and fill.side == "SELL":

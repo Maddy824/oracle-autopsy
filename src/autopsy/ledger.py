@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 
+from autopsy.data.corporate import apply_share_actions
 from autopsy.types import Fill, _validate_start_cash, _validated_prices
 
 
@@ -34,6 +35,7 @@ def replay(
     last_close: dict[str, float] = {}
     rows = []
     for time, bars in prices.groupby(level=0, sort=True):
+        apply_share_actions(positions, bars)
         last_close.update(zip(bars.symbol, bars.close))
         for fill in fills_by_time.get(time, ()):
             signed_qty = fill.qty if fill.side == "BUY" else -fill.qty
