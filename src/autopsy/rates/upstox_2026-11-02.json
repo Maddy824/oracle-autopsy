@@ -1,0 +1,41 @@
+{
+  "broker": "upstox",
+  "source_url": "https://upstox.com/brokerage-charges/",
+  "accessed": "2026-11-02",
+  "notes": [
+    "Ordinary NSE cash equities under the published standard plan; excludes Plus, promotions, ETF-specific exemptions, BSE and MTF. Turnover rates are fractions; caps and DP are INR.",
+    "Verified brokerage: intraday min(INR 20, 0.1% of turnover); delivery page states INR 20 per executed order but does not confirm a percentage cap. delivery_equity.brokerage_rate is null, so load_rates fails closed instead of assuming the small-order tariff.",
+    "Verified STT: intraday 0.025% sell only, delivery 0.1% both sides. SEBI INR 10/crore. Stamp buy only: intraday 0.003%, delivery 0.015%.",
+    "Use the current table headed Transaction charges (From 1st March 2026): NSE 0.00307% both sides, including IPFT INR 0.01/crore. The same page retains stale prose showing INR 0.10/lakh IPFT; that older value is not used. NSE circular confirms the component: https://nsearchives.nseindia.com/content/circulars/FA73061.pdf .",
+    "Verified GST rate 18%. Per Task 2, GST base is brokerage + exchange + SEBI. Upstox's displayed GST description does not explicitly name SEBI; this formula is a project convention, not an exact contract-note reconciliation.",
+    "Verified DP: intraday zero; delivery INR 20 plus GST once per scrip per sell day. dp_sell stores INR 23.60 INCLUDING GST (20 * 1.18), so DP GST is not charged again."
+  ],
+  "segment_rates": {
+    "intraday_equity": {
+      "brokerage_rate": 0.001,
+      "brokerage_cap": 20,
+      "stt_buy": 0,
+      "stt_sell": 0.00025,
+      "exchange_rate": 0.0000307,
+      "sebi_rate": 0.000001,
+      "ipft_rate": 0.000000001,
+      "gst_rate": 0.18,
+      "stamp_buy": 0.00003,
+      "stamp_sell": 0,
+      "dp_sell": 0
+    },
+    "delivery_equity": {
+      "brokerage_rate": null,
+      "brokerage_cap": 20,
+      "stt_buy": 0.001,
+      "stt_sell": 0.001,
+      "exchange_rate": 0.0000307,
+      "sebi_rate": 0.000001,
+      "ipft_rate": 0.000000001,
+      "gst_rate": 0.18,
+      "stamp_buy": 0.00015,
+      "stamp_sell": 0,
+      "dp_sell": 23.6
+    }
+  }
+}
