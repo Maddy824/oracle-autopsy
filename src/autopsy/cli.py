@@ -355,6 +355,10 @@ def _evaluation(state):
 
 
 def _oracle(args):
+    # cases/ sits at the repository root, outside the package; an editable install keeps this file in src/autopsy.
+    root = str(Path(__file__).resolve().parents[2])
+    if root not in sys.path:
+        sys.path.insert(0, root)
     try:
         from cases.oracle.run_case import run_oracle_case
         case = run_oracle_case()

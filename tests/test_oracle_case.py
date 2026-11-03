@@ -109,3 +109,12 @@ def test_fractional_oracle_quantity_is_not_rounded():
             record_gym_run(env, lambda _obs, _step: 1, OracleFillExtractor(), oracle_equity)
     finally:
         env.close()
+
+
+def test_cli_runs_the_case_from_any_folder(tmp_path):
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, "-m", "autopsy.cli", "case", "oracle"], cwd=tmp_path,
+                            capture_output=True, text=True, timeout=300)
+    assert result.returncode != 2, result.stderr
+    assert "ledger: FAIL at bar 11" in result.stdout
