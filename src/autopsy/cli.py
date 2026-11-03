@@ -376,7 +376,9 @@ def _oracle(args):
 
 def _synthetic_symbols(days, seed, pattern):
     # Five invented symbols so the replay looks like the live watch list; not a market.
-    frames = [synthetic_intraday(days, seed + n, pattern).assign(symbol=f'SYNTH-{n + 1}') for n in range(5)]
+    # sigma .0017 per five-minute bar is roughly a liquid Nifty 50 stock's 1.5% daily move.
+    frames = [synthetic_intraday(days, seed + n, pattern, sigma=.0017).assign(symbol=f'SYNTH-{n + 1}')
+              for n in range(5)]
     return combine_prices(frames)
 
 

@@ -26,11 +26,13 @@ autopsy case oracle --report out/oracle-report.html   # the bug autopsy
 autopsy alerts replay --days 60 --out out/alerts.html  # paper alerts on invented prices
 ```
 
-On invented random prices the alerts score **FAIL**: 203 paper trades, −₹15,283
-after ₹8,615 of costs. That is the correct answer: random prices have no edge,
-and costs make that visible. On data with an edge planted in it, they score **PASS**.
+On invented random prices with a liquid stock's volatility, the alerts score
+**FAIL** on every seed tried (203 paper trades on seed 17, −₹13,562 after ₹8,616
+of costs): random prices have no edge, and costs make that visible. On data with
+an edge planted in it, they score **PASS**. The tool can tell the two apart.
 
-Nothing here has passed on real market data yet. Paper only: it never places
+Nothing here has been run on real market data yet; that needs an Upstox
+Analytics Token. Paper only: it never places
 orders, and none of it is investment advice.
 
 ## Internals
