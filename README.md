@@ -1,7 +1,39 @@
 # Oracle Autopsy
 
-A local, CPU-only Python tool for researching Indian-market strategies and
-checking their accounting. It never places orders.
+My old trading bot turned ₹10,000 into ₹1,60,000 on a market that never moved.
+This repo is the tool I built to find out why, and to stop it happening again.
+
+It is a local, CPU-only Python tool that tests intraday and swing strategies on
+the Indian market (NSE) and refuses to say GO unless the result survives:
+
+- **An independent ledger.** Every fill is replayed with its own cash and
+  holdings. On the old bot the books diverge at bar 11 (+₹10,000 from nowhere).
+- **A look-ahead check.** It re-runs each strategy on truncated data; any
+  signal that changes when the future is removed fails.
+- **Real Indian costs.** STT, exchange charges, SEBI fee, stamp duty, GST and
+  brokerage from a dated rate table, with slippage doubled at the final gate.
+- **A sealed final year.** Research happens on earlier data. The last 12
+  months are hash-locked and can be opened once.
+- **Luck checks.** A block-bootstrap lower bound above zero, and a result above
+  the 95th percentile of 1,000 random-entry runs. Under 30 trades is CAN'T TELL.
+
+It also watches the market in paper mode. During market hours it sends buy and
+sell alerts for the 15-minute opening-range breakout to my Mac and Telegram,
+logs every paper fill, and scores the day in the evening against random entries.
+
+```sh
+autopsy case oracle --report out/oracle-report.html   # the bug autopsy
+autopsy alerts replay --days 60 --out out/alerts.html  # paper alerts on invented prices
+```
+
+On invented random prices the alerts score **FAIL**: 203 paper trades, −₹15,283
+after ₹8,615 of costs. That is the correct answer: random prices have no edge,
+and costs make that visible. On data with an edge planted in it, they score **PASS**.
+
+Nothing here has passed on real market data yet. Paper only: it never places
+orders, and none of it is investment advice.
+
+## Internals
 
 Task 1 provides validated `Fill` and `RunRecord` types and a reference ledger.
 `replay(fills, prices, start_cash)` applies already executed fills at their bar
@@ -30,6 +62,24 @@ The Upstox client uses `~/.config/oracle-autopsy/upstox_analytics_token`
 (mode 600). Never commit or print credentials or real NSE data. Tests use
 synthetic data only. The optional `oracle` extra supplies `gymnasium` for the
 Oracle case study.
+
+## Paper alerts
+
+```sh
+autopsy alerts test-notify --notify console,mac
+autopsy alerts replay --days 60 --out out/alerts.html            # invented prices
+autopsy alerts live --symbols ~/oracle-autopsy-watchlist.txt --notify console,mac,telegram
+autopsy alerts scorecard --out out/scorecard.html                # after the close
+```
+
+`live` polls Upstox's intraday candles 10 seconds after every five-minute
+boundary until 15:16 IST, using the Analytics Token above. Copy
+`deploy/watchlist.example.txt`, check each instrument key against Upstox's
+instrument file, and keep it outside the repo. Telegram reads
+`~/.config/oracle-autopsy/telegram.json` (mode 600) with `bot_token` and
+`chat_id`; messages go to that one chat. `deploy/launchd.plist.template` starts
+the watch at 09:10 on weekdays under `caffeinate`. The scorecard reports
+CAN'T TELL until 60 sessions and 100 trades.
 
 ## Local workflow
 

@@ -11,6 +11,10 @@ from uuid import uuid4
 
 import pandas as pd
 
+from autopsy.alerts.feed import UpstoxIntradayFeed, load_history, replay, run_live
+from autopsy.alerts.notify import TelegramError, notifier_for
+from autopsy.alerts.page import render_alerts_page
+from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
 from autopsy.costs import load_rates
 from autopsy.data.nse import load_bhavcopy
@@ -370,6 +374,46 @@ def _oracle(args):
     return _print_verdicts([verdict])
 
 
+def _synthetic_symbols(days, seed, pattern):
+    # Five invented symbols so the replay looks like the live watch list; not a market.
+    frames = [synthetic_intraday(days, seed + n, pattern).assign(symbol=f'SYNTH-{n + 1}') for n in range(5)]
+    return combine_prices(frames)
+
+
+def _scorecard_page(alerts, prices, out, source):
+    table = load_rates('zerodha')
+    book = trades(alerts, table)
+    summary = summarise(book, random_entries(prices, book, table), int(prices.index.normalize().nunique()))
+    render_alerts_page(alerts, prices, book, summary, out, source=source)
+    print(f"{summary['verdict']}: {summary['trades']} paper trades over {summary['sessions']} sessions, "
+          f"net ₹{summary['net']:,.2f} after ₹{summary['costs']:,.2f} costs. Page: {out}")
+    return 0
+
+
+def _alerts(args):
+    if args.alerts_command == 'test-notify':
+        notifier_for(args.notify.split(',')).send('Oracle Autopsy test: paper alerts reach this device.')
+        return 0
+    if args.alerts_command == 'replay':
+        if args.source == 'synthetic':
+            prices = _synthetic_symbols(args.days, args.seed, args.pattern)
+            source = f'invented {args.pattern.replace("_", " ")} prices, seed {args.seed} (not a market)'
+        else:
+            prices = _inputs(_state())
+            source = 'stored five-minute bars'
+        return _scorecard_page(replay(prices), prices, args.out, source)
+    if args.alerts_command == 'scorecard':
+        alerts, prices = load_history()
+        if alerts is None:
+            raise SetupError('No live alert history yet. Run autopsy alerts live during market hours first.')
+        return _scorecard_page(alerts, prices, args.out, 'Upstox five-minute bars, live paper watch')
+    instruments = dict(line.strip().split('=', 1) for line in Path(args.symbols).read_text().splitlines()
+                       if line.strip() and not line.startswith('#'))
+    feed = UpstoxIntradayFeed(UpstoxClient(args.token_path, cache=False), instruments)
+    run_live(feed, list(instruments), notifier_for(args.notify.split(',')))
+    return 0
+
+
 def _parser():
     parser = argparse.ArgumentParser(prog='autopsy', description='Local historical research. Never places orders.')
     commands = parser.add_subparsers(dest='command', required=True)
@@ -401,6 +445,20 @@ def _parser():
     report = commands.add_parser('report')
     report.add_argument('--out', required=True)
     report.add_argument('--slab-rate', type=float, default=30)
+    alerts = commands.add_parser('alerts', help='paper buy/sell alerts; never places orders').add_subparsers(
+        dest='alerts_command', required=True)
+    replay_ = alerts.add_parser('replay', help='run the alert rules over past sessions')
+    replay_.add_argument('--source', choices=['synthetic', 'stored'], default='synthetic')
+    replay_.add_argument('--days', type=int, default=60)
+    replay_.add_argument('--seed', type=int, default=17)
+    replay_.add_argument('--pattern', choices=['random_walk', 'planted_orb'], default='random_walk')
+    replay_.add_argument('--out', required=True)
+    live = alerts.add_parser('live', help='watch today until 15:16 IST')
+    live.add_argument('--symbols', required=True, help='text file: SYMBOL=NSE_EQ|ISIN per line')
+    live.add_argument('--notify', default='console,mac')
+    live.add_argument('--token-path', default=DEFAULT_TOKEN_PATH)
+    alerts.add_parser('scorecard').add_argument('--out', required=True)
+    alerts.add_parser('test-notify').add_argument('--notify', default='console,mac')
     return parser
 
 
@@ -419,6 +477,8 @@ def main(argv=None):
             return _holdout()
         if args.command == 'case':
             return _oracle(args)
+        if args.command == 'alerts':
+            return _alerts(args)
         verdicts, records = _evaluation(_state())
         log = TrialLog()
         if not log.verify():
@@ -429,7 +489,7 @@ def main(argv=None):
             log = None
         print(render_report(verdicts, records, log, args.out, slab_rate=args.slab_rate))
         return _print_verdicts(verdicts)
-    except (TokenMissing, UpstoxError) as exc:
+    except (TokenMissing, UpstoxError, TelegramError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     except SetupError as exc:
