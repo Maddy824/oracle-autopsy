@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Replace __REPO__ and __HOME__, save as ~/Library/LaunchAgents/local.oracle-autopsy.alerts.plist,
+     then: launchctl load ~/Library/LaunchAgents/local.oracle-autopsy.alerts.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.oracle-autopsy.alerts</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string><string>-ims</string>
+    <string>__REPO__/.venv/bin/autopsy</string><string>alerts</string><string>live</string>
+    <string>--symbols</string><string>__HOME__/oracle-autopsy-watchlist.txt</string>
+    <string>--notify</string><string>mac,telegram</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>__HOME__/oracle-autopsy-data/alerts/launchd.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/oracle-autopsy-data/alerts/launchd.log</string>
+</dict>
+</plist>
