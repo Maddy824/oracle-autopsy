@@ -17,7 +17,7 @@ dist/
 *token*
 
 # Research state belongs outside the repository, even during development.
-data/
+/data/
 oracle-autopsy-data/
 trial_log*
 trials.jsonl
