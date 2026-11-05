@@ -188,7 +188,7 @@ def test_event_trials_filters_and_hashes(tmp_path, monkeypatch):
 
     event_names = {"earnings_continuation", "post_results_orb", "block_buy_continuation"}
     assert event_names <= REGISTRY.keys()
-    assert len([name for name in REGISTRY if "+" not in name]) == 10
+    assert len([name for name in REGISTRY if "+" not in name]) == 11
     assert all(name + "+results_filter" in REGISTRY for name, rule in REGISTRY.items()
                if rule.mode == "intraday" and "+" not in name)
     original_hash = registry_hash()

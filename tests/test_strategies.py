@@ -30,7 +30,7 @@ VARIANTS = [
 def test_registry_frozen():
     # Task 10 adds three event rules plus intraday results-filter trials.
     assert set(REGISTRY) == set(GRIDS) | {
-        "earnings_continuation", "post_results_orb", "block_buy_continuation",
+        "earnings_continuation", "earnings_reaction", "post_results_orb", "block_buy_continuation",
         "orb+results_filter", "vwap_revert+results_filter", "first_hour_momentum+results_filter",
         "gap_play+results_filter", "post_results_orb+results_filter",
     }

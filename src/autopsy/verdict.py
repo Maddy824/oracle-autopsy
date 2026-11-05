@@ -126,6 +126,14 @@ def decide(pick, locked_record, checks, lock):
         return _finish(checks, stats)
     if strategy.data_check is not None:
         checks.append(strategy.data_check(record.prices))
+    baseline_options = {}
+    if pick.strategy == "earnings_reaction":
+        from autopsy.strategies.earnings_reaction import event_sessions
+        baseline_options["eligible_signal_days"] = {day for _, day in event_sessions(record.prices)}
+        stats["random_entry_matching"] = "traded symbols, event-season signal days, quantities, realized holding durations"
+        checks.append(CheckResult("random_portfolio", "CAN'T TELL", {
+            "reason": "Season-matched random entries still allow overlapping trades without cash or five-position limits; "
+                      "dynamic sizing and ATR stops are not replayed. Pre-registered portfolio baseline remains unavailable."}))
     feature_fn = lambda prices: strategy.features(prices, pick.params)
     names = {check.name for check in checks}
     if "lookahead" not in names:
@@ -154,7 +162,7 @@ def decide(pick, locked_record, checks, lock):
     checks.append(CheckResult("bootstrap", "PASS" if stats["mean_daily_net_pnl"] > 0 and stats["bootstrap_lower"] > 0 else "FAIL",
                               {"lower": stats["bootstrap_lower"], "alpha": .05}))
     try:
-        baseline = random_entry_baseline(record, record.prices, runs=1000, seed=0)
+        baseline = random_entry_baseline(record, record.prices, runs=1000, seed=0, **baseline_options)
         stats["random_entry_p95"] = float(np.quantile(baseline, .95))
         checks.append(CheckResult("random_entry", "PASS" if stats["net_profit"] > stats["random_entry_p95"] else "FAIL",
                                   {"p95": stats["random_entry_p95"], "runs": 1000}))

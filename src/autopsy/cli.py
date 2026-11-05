@@ -33,7 +33,7 @@ from autopsy.news.nse_filings import load_nse_announcements, load_nse_deals
 from autopsy.report import render_report
 from autopsy.research.lock import Lock, hash_prices
 from autopsy.research.trials import TrialLog, _digest, _line_hash, _read
-from autopsy.research.walkforward import GRIDS, Pick, select, walk_forward
+from autopsy.research.walkforward import GRIDS, Pick, select, slippage_grid_for, walk_forward
 from autopsy.stats import MinTradesError
 from autopsy.strategies import REGISTRY, registry_hash
 from autopsy.types import Fill, RunRecord
@@ -209,6 +209,8 @@ def _events(args):
 def _research(args):
     state = _state()
     prices = _inputs(state)
+    if args.strategy and REGISTRY[args.strategy].mode != args.mode:
+        raise SetupError('--strategy must match --mode.')
     if args.mode == 'intraday':
         if prices.attrs.get('bar_interval') != '5min':
             raise SetupError('Intraday strategies require five-minute data; daily NSE files cannot validate them.')
@@ -218,9 +220,19 @@ def _research(args):
     benchmark = None
     if args.benchmark_symbol:
         benchmark = _subset(prices, prices.symbol == args.benchmark_symbol)
+        if benchmark.empty:
+            raise SetupError('Benchmark symbol must be present.')
+    if args.index_symbol:
+        from autopsy.strategies.earnings_reaction import attach_index
+        if args.index_symbol not in set(prices.symbol):
+            raise SetupError('Index symbol must be present in imported prices.')
+        prices = attach_index(prices, args.index_symbol)
+    elif args.strategy == 'earnings_reaction':
+        raise SetupError('earnings_reaction requires --index-symbol and daily Nifty prices.')
+    if args.benchmark_symbol:
         prices = _subset(prices, prices.symbol != args.benchmark_symbol)
-        if benchmark.empty or prices.empty:
-            raise SetupError('Benchmark symbol and at least one trading symbol must be present.')
+    if prices.empty:
+        raise SetupError('At least one trading symbol must remain after index/benchmark exclusions.')
     end = prices.index.max().normalize() + pd.Timedelta(days=1)
     start = end - pd.DateOffset(months=12)
     dev = prices.loc[prices.index < start]
@@ -234,7 +246,7 @@ def _research(args):
     log = TrialLog()
     results = []
     for strategy in REGISTRY.values():
-        if strategy.mode != args.mode:
+        if strategy.mode != args.mode or (args.strategy and strategy.name != args.strategy):
             continue
         print(f'Research: {strategy.name}', file=sys.stderr, flush=True)
         check = strategy.data_check(dev) if strategy.data_check else None
@@ -243,11 +255,12 @@ def _research(args):
             # impossible trades. No absent event evidence becomes known empty.
             keys = sorted(strategy.params_grid)
             for values in product(*(strategy.params_grid[key] for key in keys)):
-                for bps in GRIDS[strategy.mode]:
+                for bps in slippage_grid_for(strategy):
                     log.append(strategy.name, dict(zip(keys, values)),
                                [dev.index.min().isoformat(), start.isoformat()],
                                {'status': 'unavailable', 'base_slippage_bps': bps,
                                 'verdict': check.verdict, 'data_check': check.evidence})
+            print(f"{strategy.name}: CAN'T TELL: {check.evidence.get('reason', 'data unavailable')}", file=sys.stderr)
             continue
         results.extend(walk_forward(strategy, prices, start, trial_log=log))
     try:
@@ -545,6 +558,8 @@ def _parser():
     events.add_argument('--kind', choices=['announcements', 'bulk_deal', 'block_deal'], default='announcements')
     research = commands.add_parser('research').add_subparsers(dest='research_command', required=True).add_parser('run')
     research.add_argument('--mode', choices=['intraday', 'swing'], required=True)
+    research.add_argument('--strategy', choices=list(REGISTRY), help='research only this registered strategy family')
+    research.add_argument('--index-symbol', help='daily Nifty context symbol; excluded from trades and random universes')
     research.add_argument('--benchmark-symbol', help='identify the Nifty 50 ETF symbol in imported data; excludes it from strategy trades')
     commands.add_parser('lock').add_subparsers(dest='lock_command', required=True).add_parser('create')
     commands.add_parser('holdout').add_subparsers(dest='holdout_command', required=True).add_parser('open')

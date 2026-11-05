@@ -23,7 +23,9 @@ def hash_prices(prices):
                     "values": prices[columns].values.tolist(),
                     "expected_bars": prices.attrs.get("expected_bars"),
                     "events": prices.attrs.get("events"),
-                    "bar_interval": prices.attrs.get("bar_interval")})
+                    "bar_interval": prices.attrs.get("bar_interval"),
+                    "index_symbol": prices.attrs.get("index_symbol"),
+                    "index_prices": prices.attrs.get("index_prices")})
 
 
 class Lock:
