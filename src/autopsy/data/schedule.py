@@ -54,6 +54,9 @@ def combine_prices(frames, interval=None):
     frames = list(frames)
     if not frames:
         raise ValueError("at least one price frame is required")
+    bases = {f.attrs.get("price_basis", "raw") for f in frames}
+    if len(bases) != 1:
+        raise ValueError("cannot combine raw and adjusted prices")
     intervals = {pd.tseries.frequencies.to_offset(f.attrs["bar_interval"]).freqstr
                  for f in frames if "bar_interval" in f.attrs}
     if interval is not None:
@@ -65,4 +68,6 @@ def combine_prices(frames, interval=None):
     for frame in frames:
         expected.update(tuple(pair) for pair in json.loads(frame.attrs.get("expected_bars", "[]")))
     result.attrs["expected_bars"] = json.dumps(sorted(expected), separators=(",", ":"))
+    if any("price_basis" in f.attrs for f in frames):
+        result.attrs["price_basis"] = bases.pop()
     return result

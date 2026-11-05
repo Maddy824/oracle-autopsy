@@ -1,0 +1,6 @@
+# One exchange:tradingsymbol per line. The index name includes a space.
+NSE:RELIANCE
+NSE:INFY
+NSE:HDFCBANK
+NSE:NIFTY 50
+NSE:NIFTYBEES

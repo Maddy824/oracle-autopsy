@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import webbrowser
 from uuid import uuid4
 
 import pandas as pd
@@ -17,6 +18,8 @@ from autopsy.alerts.page import render_alerts_page
 from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
 from autopsy.costs import load_rates
+from autopsy.data.kite import (DEFAULT_CREDENTIALS_PATH, DEFAULT_SESSION_PATH, KiteClient, KiteError,
+                               create_session, login_url, parse_request_token, read_credentials)
 from autopsy.data.nse import load_bhavcopy
 from autopsy.data.schedule import combine_prices, with_schedule
 from autopsy.data.store import data_dir, load_snapshot, save_snapshot
@@ -73,7 +76,7 @@ def _read_lock(path):
 
 def _inputs(state):
     if 'prices_path' not in state:
-        raise SetupError('Missing price data. Run autopsy data synthetic, import-nse or fetch-upstox first.')
+        raise SetupError('Missing price data. Run autopsy data synthetic, import-nse, fetch-upstox or fetch-kite first.')
     return load_snapshot(state['prices_path'])[0]
 
 
@@ -81,10 +84,10 @@ def _save_inputs(prices, source, *, benchmark=None):
     if prices.empty:
         raise SetupError('No price observations were loaded.')
     state = _state()
-    state.update(prices_path=str(save_snapshot(prices, 'raw', source)), source=source, selections={})
+    state.update(prices_path=str(save_snapshot(prices, prices.attrs.get('price_basis', 'raw'), source)), source=source, selections={})
     state.pop('benchmark_path', None)
     if benchmark is not None:
-        state['benchmark_path'] = str(save_snapshot(benchmark, 'raw', source + ' benchmark'))
+        state['benchmark_path'] = str(save_snapshot(benchmark, benchmark.attrs.get('price_basis', 'raw'), source + ' benchmark'))
     _save(state)
     print(state['prices_path'])
 
@@ -107,6 +110,22 @@ def _data(args):
         prices = load_bhavcopy(args.csv)
         _archive(args.csv, 'nse')
         _save_inputs(prices, 'Manually imported NSE daily files')
+    elif args.data_command == 'fetch-kite':
+        client = KiteClient(credentials_path=args.credentials, session_path=args.session)
+        symbols = [line.split('#', 1)[0].strip() for line in Path(args.symbols).read_text().splitlines()]
+        symbols = [symbol for symbol in symbols if symbol]
+        if not symbols:
+            raise SetupError('The Kite symbols file lists no symbols.')
+        # Check the whole list before a long download; name the bad line.
+        for symbol in symbols:
+            try:
+                client.resolve(symbol)
+            except ValueError:
+                raise SetupError(f'Unknown or invalid Kite symbol: {symbol!r} (use EXCHANGE:TRADINGSYMBOL, e.g. NSE:RELIANCE)') from None
+        yesterday = (pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timedelta(days=1)).date()
+        end = min(pd.Timestamp(args.end).date(), yesterday).isoformat()
+        prices = combine_prices([client.candles(symbol, args.interval, args.start, end) for symbol in symbols])
+        _save_inputs(prices, 'Zerodha Kite Connect historical candles')
     else:
         # Keep token validation first, including the Task 9 monkeypatch point.
         client = UpstoxClient(token_path=args.token_path)
@@ -114,6 +133,31 @@ def _data(args):
         prices = combine_prices([client.candles(symbol, args.unit, args.interval, args.start, args.end)
                                  for symbol in symbols])
         _save_inputs(prices, 'Upstox V3 historical candles')
+    return 0
+
+
+def _kite_login(args):
+    credentials = read_credentials(args.credentials)
+    url = login_url(credentials['api_key'])
+    print(url)
+    print('After login, the browser will show an error page at 127.0.0.1. '
+          'Copy the whole address-bar URL and paste it here; no local server is needed.')
+    if not args.no_browser:
+        try:
+            webbrowser.open(url)
+        except (webbrowser.Error, OSError):
+            print('Open the login URL above in your browser.')
+    try:
+        redirect = input('Kite redirect URL: ')
+    except EOFError:
+        raise SetupError('No Kite login response received; run autopsy kite login again.') from None
+    try:
+        token = parse_request_token(redirect)
+    except ValueError as exc:
+        raise SetupError(str(exc)) from None
+    session = create_session(args.credentials, args.session, token)
+    expires = pd.Timestamp(session['expires_at']).tz_convert('Asia/Kolkata')
+    print(f'Kite session saved; valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
     return 0
 
 
@@ -180,7 +224,7 @@ def _research(args):
                           {'mode': args.mode, 'title': 'Development selection / No eligible strategy',
                            'notes': ['No holdout was opened. This empty ledger shows development coverage only.']})
         preview = {'verdicts': [asdict(verdict)], 'records': [_encode_record(record)],
-                   'snapshot': str(save_snapshot(dev, 'raw', 'Development-only selection evidence'))}
+                   'snapshot': str(save_snapshot(dev, dev.attrs.get('price_basis', 'raw'), 'Development-only selection evidence'))}
         path = data_dir() / 'evaluations' / (uuid4().hex + '.json')
         _write(path, preview)
         state['preview_path'] = str(path)
@@ -188,13 +232,13 @@ def _research(args):
         print("Selection: CAN'T TELL. No candidate has 30 completed trades in every development fold. NO-GO.")
         return 0
     # Freeze event evidence with prices; later imports cannot rewrite selection.
-    snapshot = save_snapshot(prices, 'raw', state['source'] + '; research input')
+    snapshot = save_snapshot(prices, prices.attrs.get('price_basis', 'raw'), state['source'] + '; research input')
     state.setdefault('selections', {})[args.mode] = {
         'pick': asdict(pick), 'snapshot': str(snapshot), 'input_path': state['prices_path'],
         'registry_hash': registry_hash(), 'trial_head': log.head,
         'locked_start': start.isoformat(), 'locked_end': end.isoformat(),
         'development_hash': hash_prices(dev),
-        'benchmark_snapshot': str(save_snapshot(benchmark, 'raw', 'Owner-identified Nifty 50 ETF')) if benchmark is not None else None,
+        'benchmark_snapshot': str(save_snapshot(benchmark, benchmark.attrs.get('price_basis', 'raw'), 'Owner-identified Nifty 50 ETF')) if benchmark is not None else None,
     }
     state.pop('preview_path', None)
     _save(state)
@@ -241,7 +285,7 @@ def _create_lock():
     lock = Lock.create(path, next(iter(hashes)), registry_hash(), picks, log.head,
                        locked_start=start, locked_end=end, trial_log_path=log.path)
     state['lock_path'] = str(lock.path)
-    state['locked_snapshot'] = str(save_snapshot(locked_frames[0], 'raw', 'Sealed holdout input'))
+    state['locked_snapshot'] = str(save_snapshot(locked_frames[0], locked_frames[0].attrs.get('price_basis', 'raw'), 'Sealed holdout input'))
     state['locked_source'] = state['source']
     state['locked_benchmark'] = selections[0].get('benchmark_snapshot')
     state.pop('evaluation_path', None)
@@ -442,6 +486,17 @@ def _parser():
     fetch.add_argument('--unit', default='minutes')
     fetch.add_argument('--interval', type=int, default=5)
     fetch.add_argument('--token-path', default=DEFAULT_TOKEN_PATH)
+    kite = commands.add_parser('kite').add_subparsers(dest='kite_command', required=True).add_parser('login')
+    kite.add_argument('--credentials', default=DEFAULT_CREDENTIALS_PATH)
+    kite.add_argument('--session', default=DEFAULT_SESSION_PATH)
+    kite.add_argument('--no-browser', action='store_true')
+    fetch_kite = data.add_parser('fetch-kite')
+    fetch_kite.add_argument('--symbols', required=True, help='one EXCHANGE:TRADINGSYMBOL per line; # comments allowed')
+    fetch_kite.add_argument('--from', dest='start', required=True)
+    fetch_kite.add_argument('--to', dest='end', default=(pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timedelta(days=1)).date().isoformat())
+    fetch_kite.add_argument('--interval', default='5minute')
+    fetch_kite.add_argument('--credentials', default=DEFAULT_CREDENTIALS_PATH)
+    fetch_kite.add_argument('--session', default=DEFAULT_SESSION_PATH)
     events = commands.add_parser('events').add_subparsers(dest='events_command', required=True).add_parser('import')
     events.add_argument('csv', nargs='+')
     events.add_argument('--kind', choices=['announcements', 'bulk_deal', 'block_deal'], default='announcements')
@@ -475,6 +530,8 @@ def main(argv=None):
     try:
         if args.command == 'data':
             return _data(args)
+        if args.command == 'kite':
+            return _kite_login(args)
         if args.command == 'events':
             return _events(args)
         if args.command == 'research':
@@ -497,7 +554,7 @@ def main(argv=None):
             log = None
         print(render_report(verdicts, records, log, args.out, slab_rate=args.slab_rate))
         return _print_verdicts(verdicts)
-    except (TokenMissing, UpstoxError, TelegramError) as exc:
+    except (TokenMissing, UpstoxError, KiteError, TelegramError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     except SetupError as exc:

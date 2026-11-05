@@ -150,9 +150,17 @@ symbols/chunks and rebuild their joint schedule without discarding known gaps.
 `save_snapshot(prices, 'raw'|'adjusted', source)` writes separate Parquet files
 under `AUTOPSY_DATA_DIR`, with `.json` sidecars containing SHA-256, source and an
 IST download timestamp. `load_snapshot(path)` checks the hash before parsing
-and preserves the schedule. Snapshots require a schedule or `bar_interval`.
+and preserves the schedule and `price_basis`. Snapshots require a schedule or
+`bar_interval`. CLI snapshots use `prices.attrs.get('price_basis', 'raw')` for
+their kind; synthetic and NSE bhavcopy inputs remain raw.
 
-For corporate actions, use this explicit separation:
+Broker candles from **Upstox and Kite are already split/bonus-adjusted**, carry
+`price_basis='adjusted'`, and must **NOT** be passed to `with_actions` or `adjust`:
+that would adjust them twice. Dividends are not adjusted. Upstox has no raw
+history option ([October 2026 clarification](https://community.upstox.com/t/clarification-on-upstox-historical-candle-v3-data-usage-for-personal-backtesting-and-ml-research/18061));
+see also the [Kite adjustment discussion](https://kite.trade/forum/discussion/14381/in-historical-data-are-prices-adjusted-for-splits-and-bonus).
+
+For genuinely raw data, such as NSE bhavcopy imports, use this explicit separation:
 
 ```python
 from autopsy.data.corporate import adjust, with_actions
@@ -182,3 +190,58 @@ The fetch command is `autopsy data fetch-upstox --symbols <text-file> --from
 five-minute bars through yesterday IST. Missing/rejected/expired tokens give
 setup instructions and exit 2 without a traceback. Tests use only invented
 candles and `httpx.MockTransport`; they never contact Upstox.
+
+## Kite Connect data
+
+Create a Connect app at [developers.kite.trade](https://developers.kite.trade/)
+(₹500/month), with redirect URL `http://127.0.0.1`. Static IP whitelisting is
+only needed for order placement; historical data works from any IP. This
+integration only reads data and exchanges login tokens; it has no order API.
+
+Save the app credentials in `~/.config/oracle-autopsy/kite.json`:
+
+```json
+{"api_key": "YOUR_API_KEY", "api_secret": "YOUR_API_SECRET"}
+```
+
+Make the directory private and the credentials file mode 600:
+
+```sh
+chmod 700 ~/.config/oracle-autopsy
+chmod 600 ~/.config/oracle-autopsy/kite.json
+autopsy kite login
+```
+
+Login opens the browser and prints its URL (`--no-browser` skips opening it).
+After login, the browser lands on an error page at `127.0.0.1` because no local
+server is listening. Copy the **whole address-bar URL** into the CLI prompt.
+The request token is single-use and valid only a few minutes. The CLI writes
+`~/.config/oracle-autopsy/kite_session.json` atomically with mode 600, storing
+`access_token`, `login_time` and `expires_at`. Both files must be mode 600 or
+they are treated as missing. Run `autopsy kite login` daily: a session expires
+at the next 06:00 IST (the same day's 06:00 if login was before then).
+Use `--credentials PATH` and `--session PATH` on either command to override
+the default paths. Login failures and missing/expired sessions exit 2 with
+instructions and no traceback or token output.
+
+```sh
+autopsy data fetch-kite --symbols deploy/kite_symbols.example.txt \
+  --from 2025-01-01 --interval 5minute
+```
+
+The symbols file has one `EXCHANGE:TRADINGSYMBOL` per line, with optional `#`
+comments. For example, `NSE:RELIANCE` is an equity and `NSE:NIFTY 50` is the
+index (including its space). `--to YYYY-MM-DD` defaults to yesterday IST;
+today and future end dates are capped at yesterday. The client itself accepts
+inclusive date-only bounds or timezone-aware timestamps without this CLI cap.
+
+Intervals are `minute`, `3minute`, `5minute` (default), `10minute`, `15minute`,
+`30minute`, `60minute`, and `day`. Requests use at most 59, 99, 99, 99, 199,
+199, 399, and 1999 days respectively, one day below the service caps. Requests
+are spaced at least 0.35 seconds apart; HTTP 429 retries wait 1, 2, and 4 seconds.
+Instrument CSVs are cached per IST date under `AUTOPSY_DATA_DIR/kite`, and
+symbols are resolved by exchange and trading symbol because tokens can be
+reused. Candle chunks use SHA-256-verified Parquet caches there, without auth
+in cache keys. Saved input snapshots have kind `adjusted`; do not apply
+corporate-action adjustment again. Tests use invented data and
+`httpx.MockTransport` only; live authentication and data are not tested.

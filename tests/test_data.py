@@ -174,3 +174,20 @@ def test_split_trade_counts_and_random_baseline():
     baseline = random_entry_baseline(result, raw, runs=50, seed=7)
     assert (baseline < 0).all()
     assert (baseline > -5000).all()  # Fees only, no fictitious raw-price split loss/gain.
+
+
+@pytest.mark.parametrize('basis', ['raw', 'adjusted'])
+def test_price_basis_survives_combining_and_snapshot(tmp_path, monkeypatch, basis):
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path))
+    a, b = daily([100., 101.], 'A'), daily([200.], 'B')
+    a.attrs['price_basis'] = b.attrs['price_basis'] = basis
+    # Different schedules force pandas concat to discard attrs unless restored.
+    assert a.attrs['expected_bars'] != b.attrs['expected_bars']
+    combined = combine_prices([a, b])
+    assert combined.attrs['price_basis'] == basis
+    restored, meta = load_snapshot(save_snapshot(combined, basis, 'invented'))
+    assert restored.attrs == combined.attrs
+    assert meta['kind'] == basis
+    b.attrs['price_basis'] = 'raw' if basis == 'adjusted' else 'adjusted'
+    with pytest.raises(ValueError, match='raw and adjusted'):
+        combine_prices([a, b])

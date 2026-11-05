@@ -126,3 +126,27 @@ def test_upstox_cache_and_validation(token, tmp_path):
     with pytest.raises(ValueError, match="tz-aware"):
         client.candles("NSE_EQ|INVENTED", "minutes", 5, pd.Timestamp("2025-01-01"), "2025-01-02")
     assert len(calls) == 1
+
+
+def test_adjusted_upstox_cannot_apply_actions_again(token, tmp_path, monkeypatch):
+    from autopsy.data.corporate import with_actions
+    from autopsy.data.store import load_snapshot
+    client = UpstoxClient(token, transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json=fixture_payload())), cache_dir=tmp_path / 'cache')
+    args = ('NSE_EQ|INVENTED', 'minutes', 5, '2025-01-01', '2025-01-01')
+    for frame in [client.candles(*args), client.candles(*args)]:
+        assert frame.attrs['price_basis'] == 'adjusted'
+        with pytest.raises(ValueError, match='raw, not adjusted'):
+            with_actions(frame, pd.DataFrame())
+    path, = (tmp_path / 'cache').glob('*.parquet')
+    cached, meta = load_snapshot(path)
+    assert cached.attrs['price_basis'] == meta['kind'] == 'adjusted'
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path / 'data'))
+    monkeypatch.setattr('autopsy.cli.UpstoxClient', lambda **_: client)
+    symbols = tmp_path / 'symbols.txt'
+    symbols.write_text('NSE_EQ|INVENTED\n')
+    assert main(['data', 'fetch-upstox', '--symbols', str(symbols), '--from', '2025-01-01',
+                 '--to', '2025-01-01']) == 0
+    state = json.loads((tmp_path / 'data/session.json').read_text())
+    frame, meta = load_snapshot(state['prices_path'])
+    assert frame.attrs['price_basis'] == meta['kind'] == 'adjusted'
