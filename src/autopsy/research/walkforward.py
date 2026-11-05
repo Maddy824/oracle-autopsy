@@ -16,6 +16,11 @@ RULE = "best_median_fold_net_sharpe_at_2x_slippage"
 GRIDS = {"intraday": (10, 25, 50), "swing": (5, 10, 25)}
 
 
+def slippage_grid_for(strategy):
+    """The reaction family pre-registers four variants at fixed 10 bps base."""
+    return (10,) if strategy.name == "earnings_reaction" else GRIDS[strategy.mode]
+
+
 @dataclass(frozen=True)
 class Pick:
     strategy: str
@@ -73,7 +78,7 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
     dev = prices.loc[prices.index < dev_end].copy()
     # Event evidence and the independent schedule must survive window slicing.
     dev.attrs = {key: value for key, value in prices.attrs.items()
-                 if key in {"events", "expected_bars", "bar_interval"}}
+                 if key in {"events", "expected_bars", "bar_interval", "index_symbol", "index_prices"}}
     if dev.empty or not dev.index.is_monotonic_increasing:
         raise ValueError("ordered development bars required")
     days = dev.index.normalize().unique()
@@ -83,8 +88,9 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
     boundaries = [days[group[0]] for group in groups] + [dev_end]
     log = trial_log if trial_log is not None else TrialLog()
     rates = rates if rates is not None else load_rates("zerodha")
-    grid = GRIDS[strategy.mode] if slippage_grid is None else tuple(slippage_grid)
-    if not grid or any(value not in GRIDS[strategy.mode] for value in grid):
+    allowed = slippage_grid_for(strategy)
+    grid = allowed if slippage_grid is None else tuple(slippage_grid)
+    if not grid or any(value not in allowed for value in grid) or len(set(grid)) != len(grid):
         raise ValueError("slippage grid must be a subset of the declared mode grid")
     results = []
     keys = sorted(strategy.params_grid)

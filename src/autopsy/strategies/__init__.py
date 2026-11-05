@@ -31,7 +31,7 @@ class Strategy:
         }))
 
 
-from autopsy.strategies import events, intraday, swing  # noqa: E402
+from autopsy.strategies import earnings_reaction, events, intraday, swing  # noqa: E402
 
 
 _base_registry = {
@@ -43,6 +43,8 @@ _base_registry = {
         Strategy("nday_breakout", "swing", {"n": [20, 55]}, swing.breakout_features, swing.breakout_signals),
         Strategy("trend_pullback", "swing", {"ma": [50, 100], "pullback": [3, 5]}, swing.pullback_features, swing.pullback_signals),
         Strategy("short_reversal", "swing", {"lookback": [3, 5]}, swing.reversal_features, swing.reversal_signals),
+        Strategy("earnings_reaction", "swing", {"variant": list(earnings_reaction.VARIANTS)},
+                 earnings_reaction.features, earnings_reaction.signals, earnings_reaction.data_check),
         Strategy("earnings_continuation", "swing", {"holding_days": [1, 3, 5], "delay": events.DELAYS},
                  events.earnings_features, events.earnings_signals, events.earnings_data_check),
         Strategy("post_results_orb", "intraday", {"delay": events.DELAYS},
@@ -66,9 +68,10 @@ def registry_hash() -> str:
     helpers must invalidate a lock just as direct callback edits do.
     """
     records = []
+    from autopsy import engine
     from autopsy.news import events as event_records, nse_filings
     sources = {module.__name__: inspect.getsource(module)
-               for module in (inspect.getmodule(registry_hash), event_records, nse_filings)}
+               for module in (inspect.getmodule(registry_hash), event_records, nse_filings, engine)}
     for key, strategy in sorted(REGISTRY.items()):
         callbacks = (strategy.features, strategy.signals) + ((strategy.data_check,) if strategy.data_check else ())
         records.append({

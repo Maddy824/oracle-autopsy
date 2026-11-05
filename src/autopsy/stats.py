@@ -147,7 +147,7 @@ def _cost_curve(side, segment, rates):
     return threshold, at_cap / threshold, (fee(2 * threshold) - at_cap) / threshold
 
 
-def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
+def random_entry_baseline(record, prices, runs=1000, seed=0, *, eligible_signal_days=None) -> np.ndarray:
     """Net PnL of independent random round trips, conditional on actual trades.
 
     Preserve each completed trade's symbol, side and entry whole-share quantity.
@@ -166,6 +166,10 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
     with replacement, allowing overlaps, without portfolio resizing or cash
     rejection (which would change the required trade count). Unclosed trades
     are excluded. Vectorise runs and cache eligible entry/exit pairs.
+
+    eligible_signal_days optionally restricts the preceding bar's session to
+    earnings-reaction days (some tradable symbol had a timed results event).
+    This matches season timing, not portfolio capacity or cash constraints.
     """
     trades = _round_trips(record)
     _positive_integer(runs, "runs")
@@ -187,6 +191,8 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
     dp = (trade_costs("SELL", 1., segment, rates).total
           - trade_costs("SELL", 1., segment, rates, symbol_sold_today=True).total)
     rng = np.random.default_rng(seed)
+    eligible_days = (None if eligible_signal_days is None else
+                     pd.DatetimeIndex(list(eligible_signal_days)).normalize())
     result = np.zeros(runs)
     pools, bar_data, sold_days, share_factors = {}, {}, {}, {}
     row = np.arange(runs)
@@ -228,6 +234,8 @@ def random_entry_baseline(record, prices, runs=1000, seed=0) -> np.ndarray:
             else:
                 ends = starts + duration
                 valid = ends < len(times)
+            if eligible_days is not None:
+                valid &= days[starts - 1].isin(eligible_days)
             starts, ends = starts[valid], ends[valid]
             if not len(starts):
                 raise ValueError(f"no tradable entries for {symbol} with holding duration {duration}")
