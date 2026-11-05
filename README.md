@@ -194,7 +194,7 @@ candles and `httpx.MockTransport`; they never contact Upstox.
 ## Kite Connect data
 
 Create a Connect app at [developers.kite.trade](https://developers.kite.trade/)
-(₹500/month), with redirect URL `http://127.0.0.1`. Static IP whitelisting is
+(₹500/month), with redirect URL **exactly** `http://127.0.0.1:8742/kite`. Static IP whitelisting is
 only needed for order placement; historical data works from any IP. This
 integration only reads data and exchanges login tokens; it has no order API.
 
@@ -212,10 +212,13 @@ chmod 600 ~/.config/oracle-autopsy/kite.json
 autopsy kite login
 ```
 
-Login opens the browser and prints its URL (`--no-browser` skips opening it).
-After login, the browser lands on an error page at `127.0.0.1` because no local
-server is listening. Copy the **whole address-bar URL** into the CLI prompt.
-The request token is single-use and valid only a few minutes. The CLI writes
+Login starts a listener bound only to `127.0.0.1:8742`, prints the login URL,
+and opens the browser (`--no-browser` skips opening it). Log in manually on
+**this Mac**; passwords and TOTP are never stored or automated. The redirect
+is captured and exchanged immediately, and the tab says “Kite login saved.
+You can close this tab.” No copy-paste is needed. Failed logins can be retried
+while the listener waits. The request token is single-use and valid only a
+few minutes. The CLI writes
 `~/.config/oracle-autopsy/kite_session.json` atomically with mode 600, storing
 `access_token`, `login_time` and `expires_at`. Both files must be mode 600 or
 they are treated as missing. Run `autopsy kite login` daily: a session expires
@@ -223,6 +226,48 @@ at the next 06:00 IST (the same day's 06:00 if login was before then).
 Use `--credentials PATH` and `--session PATH` on either command to override
 the default paths. Login failures and missing/expired sessions exit 2 with
 instructions and no traceback or token output.
+
+Login options:
+
+- `--wait 10m` sets the deadline (default 10 minutes; also accepts `90s`,
+  `18h`, etc.). A timeout exits 2; run `autopsy kite login` again to retry.
+- `--if-needed` exits immediately when the saved session is valid for at
+  least another 30 minutes, without opening a browser or sending a reminder.
+- `--notify` sends a Mac reminder and, if already configured in
+  `~/.config/oracle-autopsy/telegram.json`, a Telegram reminder to log in
+  **on this Mac, not a phone**. The browser tab opens ready for login unless
+  `--no-browser` is supplied. Notification delivery is best effort.
+- `--port 8742` changes the loopback port; a different port also requires
+  changing the app's registered redirect URL to match.
+- `--paste` restores the manual prompt: copy the **whole address-bar URL**
+  after login, even if the browser shows a connection error. Use this if the
+  listener port is busy. `--wait` applies to listener mode, not the paste prompt.
+
+An optional weekday reminder template is provided at
+`deploy/com.oracleautopsy.kite-login.plist.example`. It runs
+`autopsy kite login --if-needed --notify --wait 17h` at **15:45 local Mac
+time**, with logs under `~/oracle-autopsy-data/logs/`. It does not run research
+or fetch data. The Mac must be awake and the owner logged in for timely
+delivery; a saved session still expires at 06:00 IST, irrespective of the
+listener's deadline. The template is not installed automatically.
+
+To install, run from the repository root after creating `.venv`:
+
+```sh
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/oracle-autopsy-data/logs"
+agent="$HOME/Library/LaunchAgents/com.oracleautopsy.kite-login.plist"
+cp deploy/com.oracleautopsy.kite-login.plist.example "$agent"
+sed -i '' -e "s|__REPO__|$PWD|g" -e "s|__HOME__|$HOME|g" "$agent"
+launchctl bootstrap "gui/$(id -u)" "$agent"
+```
+
+To uninstall:
+
+```sh
+agent="$HOME/Library/LaunchAgents/com.oracleautopsy.kite-login.plist"
+launchctl bootout "gui/$(id -u)" "$agent"
+rm "$agent"
+```
 
 ```sh
 autopsy data fetch-kite --symbols deploy/kite_symbols.example.txt \
@@ -243,5 +288,32 @@ Instrument CSVs are cached per IST date under `AUTOPSY_DATA_DIR/kite`, and
 symbols are resolved by exchange and trading symbol because tokens can be
 reused. Candle chunks use SHA-256-verified Parquet caches there, without auth
 in cache keys. Saved input snapshots have kind `adjusted`; do not apply
-corporate-action adjustment again. Tests use invented data and
-`httpx.MockTransport` only; live authentication and data are not tested.
+corporate-action adjustment again. Tests use invented data, local HTTP and
+`httpx.MockTransport`; live authentication and data are not tested. Sandboxes
+that deny loopback binding skip the three real-socket login tests; run the
+suite in a normal local shell to exercise those tests.
+
+Intraday research uses the same session window for every symbol and every
+date: **bar start strictly before 15:15 IST**, including historical dates
+before August 2026. Since 3 August 2026, F&O stocks' continuous session ends
+at 15:15, so their last Kite five-minute bar starts at 15:10; indices and
+non-F&O stocks can still have 15:15–15:25 bars. The common research window
+excludes those extra bars and their `expected_bars` slots, avoiding three
+false missing-bar flags per stock/day while retaining genuine earlier gaps.
+The announced CAS move to 15:30–15:40 on 7 December 2026 does not change this
+fixed convention.
+
+Trimming occurs in `research run --mode intraday` before features, signals,
+benchmark splitting and frozen research snapshots, so development backtests,
+locks, holdouts and reports use the same window. Swing/daily research and
+saved source snapshots remain unchanged. Direct Python backtest callers
+should apply `autopsy.data.schedule.intraday_research_prices` before computing
+signals; the general engine continues to accept supplied session shapes.
+Intraday and swing selections with different frozen evidence cannot share a
+lock; use separate `AUTOPSY_DATA_DIR` workflows for those modes.
+
+The existing square-off rule therefore exits at **15:10 bar open**, with
+adverse slippage, rather than its 15:15 closing price. This scheduled exit
+does not read that bar's close; signals execute strictly on a later bar, and
+entries at the cutoff are blocked. Short or incomplete sessions still use
+their last observed bar, so expected-schedule quality checks remain necessary.

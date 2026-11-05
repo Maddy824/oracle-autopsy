@@ -14,11 +14,36 @@ also retains existing expectations so it cannot erase previously known gaps.
 """
 
 import json
+from datetime import time
 
 import numpy as np
 import pandas as pd
 
-from autopsy.types import _validated_prices
+from autopsy.types import _ist_index, _validated_prices
+
+
+def intraday_research_prices(prices):
+    """Copy the common pre-15:15 IST research session and its expected slots.
+
+    Filter the existing schedule, rather than rebuilding from observed bars:
+    rebuilding would erase genuine missing bars at the remaining session edges.
+    The source frame and its raw snapshot are untouched. Call before features,
+    signals, quality checks and research snapshots, for intraday research only.
+    """
+    cutoff = time(15, 15)
+    index = _ist_index(prices.index, "prices")
+    result = prices.loc[index.time < cutoff].copy()
+    result.index = index[index.time < cutoff]
+    schedule = prices.attrs.get("expected_bars")
+    if schedule is not None:
+        if isinstance(schedule, str):
+            schedule = json.loads(schedule)
+        result.attrs["expected_bars"] = json.dumps(
+            [pair for pair in schedule
+             if pd.Timestamp(pair[0]).tz_convert("Asia/Kolkata").time() < cutoff],
+            separators=(",", ":"),
+        )
+    return result
 
 
 def with_schedule(prices, interval):

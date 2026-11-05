@@ -2,6 +2,13 @@
 
 This describes observed sessions; it cannot distinguish a short session from
 missing data. Missing-bar quality checks need an independent expected schedule.
+
+Intraday CLI research first restricts every symbol and date to bar starts before
+15:15 IST, with matching expected slots. Thus its five-minute sessions exit at
+the 15:10 bar (at its open in the engine). This common window avoids the closing
+auction introduced for F&O stocks on 3 August 2026. The announced 7 December
+2026 move to 15:30–15:40 does not change this fixed research convention. Swing,
+daily data and saved raw inputs retain their original sessions.
 """
 
 import pandas as pd

@@ -382,7 +382,7 @@ def test_login_cli(files, tmp_path, monkeypatch, capsys, no_browser):
                 'access_token': ACCESS, 'login_time': NOW.isoformat()}})))
     monkeypatch.setattr('autopsy.cli.create_session', exchange)
     session = tmp_path / 'new-session.json'
-    args = ['kite', 'login', '--credentials', str(files[0]), '--session', str(session)]
+    args = ['kite', 'login', '--paste', '--credentials', str(files[0]), '--session', str(session)]
     assert main(args + (['--no-browser'] if no_browser else [])) == 0
     assert opened == ([] if no_browser else [login_url(API_KEY)])
     out = capsys.readouterr().out
@@ -408,7 +408,7 @@ def test_failed_exchange_cli(files, monkeypatch, capsys):
             lambda _: httpx.Response(403, text=SECRET + ACCESS + REQUEST)))
     monkeypatch.setattr('autopsy.cli.create_session', exchange)
     old = files[1].read_bytes()
-    assert main(['kite', 'login', '--credentials', str(files[0]), '--session', str(files[1]), '--no-browser']) == 2
+    assert main(['kite', 'login', '--paste', '--credentials', str(files[0]), '--session', str(files[1]), '--no-browser']) == 2
     captured = capsys.readouterr()
     assert 'autopsy kite login' in captured.err and 'Traceback' not in captured.err
     assert all(secret not in captured.out + captured.err for secret in [SECRET, ACCESS, REQUEST])
@@ -419,7 +419,7 @@ def test_failed_exchange_cli(files, monkeypatch, capsys):
 def test_login_cli_bad_paste_says_what_to_paste(files, monkeypatch, capsys, pasted):
     monkeypatch.setattr('builtins.input', lambda _: pasted)
     monkeypatch.setattr('autopsy.cli.create_session', lambda *a: pytest.fail('no exchange on bad paste'))
-    assert main(['kite', 'login', '--credentials', str(files[0]), '--session', str(files[1]), '--no-browser']) == 2
+    assert main(['kite', 'login', '--paste', '--credentials', str(files[0]), '--session', str(files[1]), '--no-browser']) == 2
     err = capsys.readouterr().err
     assert 'paste the successful redirect URL' in err and 'Traceback' not in err
 

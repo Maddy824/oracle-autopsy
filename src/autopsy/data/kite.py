@@ -10,8 +10,8 @@ https://kite.trade/forum/discussion/4014/is-historical-data-dividend-adjusted
 Base https://api.kite.trade; every request sends X-Kite-Version: 3, and
 authenticated data requests send Authorization: token api_key:access_token.
 Login URL: https://kite.zerodha.com/connect/login?v=3&api_key={api_key}.
-The registered redirect http://127.0.0.1 need not have a listener: paste the
-error page's address-bar URL with request_token, action=login, status=success.
+The registered redirect http://127.0.0.1:8742/kite is captured by a local
+listener (kite_login.py); --paste also accepts the address-bar URL.
 POST /session/token exchanges api_key, request_token and SHA256(api_key +
 request_token + api_secret), form-encoded. Request tokens are single-use,
 valid a few minutes. Sessions expire at the next 06:00 IST after login.
@@ -203,6 +203,19 @@ def create_session(credentials_path, session_path, request_token, *, transport=N
     return session
 
 
+def read_session(path=DEFAULT_SESSION_PATH, *, now=None):
+    """Validate the private session locally, without contacting Kite."""
+    session = _private_json(path, KiteSessionMissing)
+    try:
+        login, expires = _ist(session['login_time']), pd.Timestamp(session['expires_at'])
+        if (pd.isna(expires) or expires.tz is None or expires != _expires(login)
+                or expires <= _now(now) or not _credential(session['access_token'])):
+            raise ValueError()
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise KiteSessionMissing() from None
+    return session
+
+
 def _bound(value, *, end=False):
     is_date = ((isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
                or (isinstance(value, date) and not isinstance(value, datetime)))
@@ -230,14 +243,8 @@ class KiteClient:
                  *, transport=None, sleep=time.sleep, clock=time.monotonic, now=None,
                  cache=True, cache_dir=None):
         credentials = read_credentials(credentials_path)
-        session = _private_json(session_path, KiteSessionMissing)
-        try:
-            login, expires = _ist(session["login_time"]), pd.Timestamp(session["expires_at"])
-            if (pd.isna(expires) or expires.tz is None or expires != _expires(login)
-                    or expires <= _now(now) or not _credential(session["access_token"])):
-                raise ValueError()
-        except (KeyError, TypeError, ValueError, OverflowError):
-            raise KiteSessionMissing() from None
+        session = read_session(session_path, now=now)
+        expires = pd.Timestamp(session['expires_at'])
         self._api_key, self._access_token = credentials["api_key"], session["access_token"]
         self._expires_at = expires
         self._transport, self._sleep, self._clock, self._now = transport, sleep, clock, now
