@@ -1,8 +1,10 @@
 """One-shot loopback login capture. Never log callback URLs or credentials."""
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import hmac
 import math
 import re
+import secrets
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -43,6 +45,8 @@ class KiteLoginListener:
         if not 0 <= port <= 65535:
             raise KiteError('Kite --port must be between 0 and 65535.')
         self.session = None
+        self.state = secrets.token_urlsafe(32)
+        self.failed_attempts = 0
         self.wait_label = wait
         self.clock = clock
         self.deadline = clock() + seconds
@@ -69,6 +73,11 @@ class KiteLoginListener:
                 self.wfile.write(body)
 
             def do_GET(self):
+                hosts = self.headers.get_all('Host', [])
+                if len(hosts) != 1 or hosts[0] not in (
+                        f'127.0.0.1:{listener.port}', f'localhost:{listener.port}'):
+                    self.page(400, 'Login failed; try again')
+                    return
                 try:
                     url = urlsplit(self.path)
                 except ValueError:
@@ -81,12 +90,18 @@ class KiteLoginListener:
                     self.page(408, 'Login timed out; run autopsy kite login again')
                     return
                 try:
-                    if parse_qs(url.query).get('status') != ['success']:
+                    query = parse_qs(url.query, keep_blank_values=True)
+                    states = query.get('state', [])
+                    if len(states) != 1 or not hmac.compare_digest(
+                            states[0].encode(), listener.state.encode()):
+                        raise ValueError()
+                    if query.get('status') != ['success']:
                         raise ValueError()
                     token = parse_request_token('http://127.0.0.1' + self.path)
                     listener.session = exchange(credentials_path, session_path, token)
                 except Exception:
                     # Even an injected exchange must never echo its exception.
+                    listener.failed_attempts += 1
                     self.page(400, 'Login failed; try again')
                     return
                 self.page(200, 'Kite login saved. You can close this tab.')
@@ -107,6 +122,8 @@ class KiteLoginListener:
 
     def wait(self):
         while self.session is None:
+            if self.failed_attempts >= 5:
+                raise KiteError('Too many invalid Kite login callbacks; run autopsy kite login again')
             remaining = self.deadline - self.clock()
             if remaining <= 0:
                 raise KiteError(f'No Kite login within {self.wait_label}; run autopsy kite login again')

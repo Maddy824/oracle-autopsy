@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 import stat
 import traceback
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pandas as pd
@@ -77,6 +77,15 @@ def fetch(client, **kwargs):
 def test_login_url():
     assert login_url(API_KEY) == 'https://kite.zerodha.com/connect/login?v=3&api_key=InventedKey'
     assert login_url('key+value').endswith('api_key=key%2Bvalue')
+
+
+@pytest.mark.parametrize('state', ['InventedNonce_-', 'nonce+with &reserved=chars', ''])
+def test_login_url_state_redirect_params(state):
+    query = parse_qs(urlsplit(login_url(API_KEY, state=state)).query)
+    assert query['api_key'] == [API_KEY]
+    assert query['v'] == ['3']
+    assert parse_qs(query['redirect_params'][0], keep_blank_values=True) == {'state': [state]}
+    assert 'redirect_params=state%3D' in login_url(API_KEY, state=state)
 
 
 @pytest.mark.parametrize('text', [REQUEST, '  ' + REQUEST + '\n',

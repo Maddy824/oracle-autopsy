@@ -212,7 +212,7 @@ chmod 600 ~/.config/oracle-autopsy/kite.json
 autopsy kite login
 ```
 
-Login starts a listener bound only to `127.0.0.1:8742`, prints the login URL,
+Login starts a listener bound only to `127.0.0.1:8742`
 and opens the browser (`--no-browser` skips opening it). Log in manually on
 **this Mac**; passwords and TOTP are never stored or automated. The redirect
 is captured and exchanged immediately, and the tab says “Kite login saved.
@@ -226,6 +226,12 @@ at the next 06:00 IST (the same day's 06:00 if login was before then).
 Use `--credentials PATH` and `--session PATH` on either command to override
 the default paths. Login failures and missing/expired sessions exit 2 with
 instructions and no traceback or token output.
+
+Each listener checks a one-time random state returned by Kite and requires
+the Host header to match `127.0.0.1:<port>` or `localhost:<port>`. Five invalid
+state, status, token or exchange attempts end the wait with exit 2. The
+state-bearing login URL is never printed; use `--paste` for manual login
+when browser opening is disabled or unavailable.
 
 Login options:
 

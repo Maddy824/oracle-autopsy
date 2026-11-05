@@ -155,20 +155,24 @@ def _kite_login(args):
                 print(f'Kite session already valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
                 return 0
     credentials = read_credentials(args.credentials)
-    url = login_url(credentials['api_key'])
 
-    def prompt():
-        print(url, flush=True)
+    def prompt(url):
+        if args.paste:
+            print(url, flush=True)
+        else:
+            print('Waiting for Kite login in your browser. '
+                  'For manual login, rerun with --paste.', flush=True)
         if args.notify:
             notify_kite_login()
         if not args.no_browser:
             try:
                 webbrowser.open(url)
             except (webbrowser.Error, OSError):
-                print('Open the login URL above in your browser on this Mac.', flush=True)
+                print('Open the login URL above in your browser on this Mac.' if args.paste
+                      else 'Could not open the browser; rerun with --paste.', flush=True)
 
     if args.paste:
-        prompt()
+        prompt(login_url(credentials['api_key']))
         print('After login, the browser may show an error page at 127.0.0.1. '
               'Copy the whole address-bar URL and paste it here; no local server is needed.')
         try:
@@ -183,7 +187,8 @@ def _kite_login(args):
     else:
         with KiteLoginListener(args.credentials, args.session, port=args.port,
                                wait=args.wait, exchange=create_session) as listener:
-            prompt()
+            url = login_url(credentials['api_key'], state=listener.state)
+            prompt(url)
             session = listener.wait()
     expires = pd.Timestamp(session['expires_at']).tz_convert('Asia/Kolkata')
     print(f'Kite session saved; valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
