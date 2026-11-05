@@ -13,15 +13,17 @@ from uuid import uuid4
 import pandas as pd
 
 from autopsy.alerts.feed import UpstoxIntradayFeed, load_history, replay, run_live
-from autopsy.alerts.notify import TelegramError, notifier_for
+from autopsy.alerts.notify import TelegramError, notifier_for, notify_kite_login
 from autopsy.alerts.page import render_alerts_page
 from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
 from autopsy.costs import load_rates
 from autopsy.data.kite import (DEFAULT_CREDENTIALS_PATH, DEFAULT_SESSION_PATH, KiteClient, KiteError,
-                               create_session, login_url, parse_request_token, read_credentials)
+                               KiteSessionMissing, create_session, login_url, parse_request_token,
+                               read_credentials, read_session)
+from autopsy.data.kite_login import KiteLoginListener, wait_seconds
 from autopsy.data.nse import load_bhavcopy
-from autopsy.data.schedule import combine_prices, with_schedule
+from autopsy.data.schedule import combine_prices, intraday_research_prices, with_schedule
 from autopsy.data.store import data_dir, load_snapshot, save_snapshot
 from autopsy.data.synthetic import synthetic_intraday
 from autopsy.data.upstox import DEFAULT_TOKEN_PATH, TokenMissing, UpstoxClient, UpstoxError
@@ -137,25 +139,52 @@ def _data(args):
 
 
 def _kite_login(args):
-    credentials = read_credentials(args.credentials)
-    url = login_url(credentials['api_key'])
-    print(url)
-    print('After login, the browser will show an error page at 127.0.0.1. '
-          'Copy the whole address-bar URL and paste it here; no local server is needed.')
-    if not args.no_browser:
-        try:
-            webbrowser.open(url)
-        except (webbrowser.Error, OSError):
-            print('Open the login URL above in your browser.')
     try:
-        redirect = input('Kite redirect URL: ')
-    except EOFError:
-        raise SetupError('No Kite login response received; run autopsy kite login again.') from None
-    try:
-        token = parse_request_token(redirect)
+        wait_seconds(args.wait)
     except ValueError as exc:
         raise SetupError(str(exc)) from None
-    session = create_session(args.credentials, args.session, token)
+    if args.if_needed:
+        now = pd.Timestamp.now(tz='Asia/Kolkata')
+        try:
+            session = read_session(args.session, now=now)
+        except KiteSessionMissing:
+            pass
+        else:
+            expires = pd.Timestamp(session['expires_at']).tz_convert('Asia/Kolkata')
+            if expires >= now + pd.Timedelta(minutes=30):
+                print(f'Kite session already valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
+                return 0
+    credentials = read_credentials(args.credentials)
+    url = login_url(credentials['api_key'])
+
+    def prompt():
+        print(url, flush=True)
+        if args.notify:
+            notify_kite_login()
+        if not args.no_browser:
+            try:
+                webbrowser.open(url)
+            except (webbrowser.Error, OSError):
+                print('Open the login URL above in your browser on this Mac.', flush=True)
+
+    if args.paste:
+        prompt()
+        print('After login, the browser may show an error page at 127.0.0.1. '
+              'Copy the whole address-bar URL and paste it here; no local server is needed.')
+        try:
+            redirect = input('Kite redirect URL: ')
+        except EOFError:
+            raise SetupError('No Kite login response received; run autopsy kite login again.') from None
+        try:
+            token = parse_request_token(redirect)
+        except ValueError as exc:
+            raise SetupError(str(exc)) from None
+        session = create_session(args.credentials, args.session, token)
+    else:
+        with KiteLoginListener(args.credentials, args.session, port=args.port,
+                               wait=args.wait, exchange=create_session) as listener:
+            prompt()
+            session = listener.wait()
     expires = pd.Timestamp(session['expires_at']).tz_convert('Asia/Kolkata')
     print(f'Kite session saved; valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
     return 0
@@ -175,14 +204,18 @@ def _events(args):
 def _research(args):
     state = _state()
     prices = _inputs(state)
+    if args.mode == 'intraday':
+        if prices.attrs.get('bar_interval') != '5min':
+            raise SetupError('Intraday strategies require five-minute data; daily NSE files cannot validate them.')
+        prices = intraday_research_prices(prices)
+        if prices.empty:
+            raise SetupError('No intraday bars start before 15:15 IST.')
     benchmark = None
     if args.benchmark_symbol:
         benchmark = _subset(prices, prices.symbol == args.benchmark_symbol)
         prices = _subset(prices, prices.symbol != args.benchmark_symbol)
         if benchmark.empty or prices.empty:
             raise SetupError('Benchmark symbol and at least one trading symbol must be present.')
-    if args.mode == 'intraday' and prices.attrs.get('bar_interval') != '5min':
-        raise SetupError('Intraday strategies require five-minute data; daily NSE files cannot validate them.')
     end = prices.index.max().normalize() + pd.Timedelta(days=1)
     start = end - pd.DateOffset(months=12)
     dev = prices.loc[prices.index < start]
@@ -490,6 +523,11 @@ def _parser():
     kite.add_argument('--credentials', default=DEFAULT_CREDENTIALS_PATH)
     kite.add_argument('--session', default=DEFAULT_SESSION_PATH)
     kite.add_argument('--no-browser', action='store_true')
+    kite.add_argument('--paste', action='store_true', help='paste the redirect URL instead of listening')
+    kite.add_argument('--if-needed', action='store_true', help='skip if session has at least 30 minutes left')
+    kite.add_argument('--notify', action='store_true', help='remind this Mac and configured Telegram chat')
+    kite.add_argument('--wait', default='10m', help='login deadline, e.g. 90s, 10m, 18h (default: 10m)')
+    kite.add_argument('--port', type=int, default=8742, help='loopback callback port (default: 8742)')
     fetch_kite = data.add_parser('fetch-kite')
     fetch_kite.add_argument('--symbols', required=True, help='one EXCHANGE:TRADINGSYMBOL per line; # comments allowed')
     fetch_kite.add_argument('--from', dest='start', required=True)

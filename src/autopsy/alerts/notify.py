@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import stat
 import subprocess
+import sys
 
 import httpx
 
@@ -81,3 +82,17 @@ def notifier_for(names):
     if unknown:
         raise ValueError(f"unknown notifier: {', '.join(sorted(unknown))}")
     return FanOut([factories[name]() for name in names])
+
+
+def notify_kite_login():
+    """Best-effort reminder; Telegram is used only when already configured."""
+    message = "Oracle Autopsy: log in to Kite for tonight's run. Log in on this Mac, not a phone."
+    try:
+        MacNotifier().send(message)
+    except OSError:
+        print('Mac notification unavailable; use the login browser tab on this Mac.', file=sys.stderr)
+    if TELEGRAM_CONFIG.expanduser().exists():
+        try:
+            TelegramNotifier().send(message)
+        except TelegramError:
+            print('Telegram notification unavailable; use the login browser tab on this Mac.', file=sys.stderr)
