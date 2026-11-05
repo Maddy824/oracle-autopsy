@@ -123,10 +123,13 @@ def read_credentials(path=DEFAULT_CREDENTIALS_PATH):
     return credentials
 
 
-def login_url(api_key):
+def login_url(api_key, state=None):
     if not _credential(api_key):
         raise KiteCredentialsMissing()
-    return "https://kite.zerodha.com/connect/login?" + urlencode({"v": "3", "api_key": api_key})
+    params = {"v": "3", "api_key": api_key}
+    if state is not None:
+        params["redirect_params"] = urlencode({"state": state})
+    return "https://kite.zerodha.com/connect/login?" + urlencode(params)
 
 
 def parse_request_token(text):

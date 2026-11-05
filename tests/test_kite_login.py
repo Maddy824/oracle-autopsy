@@ -10,6 +10,7 @@ import plistlib
 import socket
 import stat
 import threading
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pandas as pd
@@ -74,6 +75,7 @@ def memory_server(monkeypatch):
             self.output.extend(data)
     class MemoryServer:
         server_port = 0
+        closed = False
         def __init__(self, address, handler):
             self.handler = handler
             self.requests = []
@@ -84,7 +86,7 @@ def memory_server(monkeypatch):
                 self.handler(connection, ('127.0.0.1', 12345), self)
                 self.responses.append(bytes(connection.output).decode())
         def server_close(self):
-            pass
+            self.closed = True
     monkeypatch.setattr(kite_login, '_Server', MemoryServer)
 
 
@@ -96,13 +98,14 @@ def test_http_handler_parser_retries_and_sanitizes_without_sockets(files, memory
             raise KiteError(SECRET + ACCESS + TOKEN)
         return exchange(*args)
     with KiteLoginListener(*files, port=0, wait='5s', exchange=retry) as listener:
+        callback = CALLBACK + '&state=' + listener.state
         for request, status in [
             (f'BAD {TOKEN} extra HTTP/1.0\r\n\r\n', 400),
-            ('GET /favicon.ico HTTP/1.0\r\n\r\n', 404),
-            (f'GET /wrong?request_token={TOKEN} HTTP/1.0\r\n\r\n', 404),
-            (f'GET /kite?status=error&request_token={TOKEN} HTTP/1.0\r\n\r\n', 400),
-            (f'GET {CALLBACK} HTTP/1.0\r\n\r\n', 400),
-            (f'GET {CALLBACK} HTTP/1.0\r\n\r\n', 200),
+            ('GET /favicon.ico HTTP/1.0\r\nHost: localhost:0\r\n\r\n', 404),
+            (f'GET /wrong?request_token={TOKEN} HTTP/1.0\r\nHost: localhost:0\r\n\r\n', 404),
+            (f'GET {callback.replace("status=success", "status=error")} HTTP/1.0\r\nHost: localhost:0\r\n\r\n', 400),
+            (f'GET {callback} HTTP/1.0\r\nHost: localhost:0\r\n\r\n', 400),
+            (f'GET {callback} HTTP/1.0\r\nHost: localhost:0\r\n\r\n', 200),
         ]:
             listener.server.requests.append(request.encode())
             listener.server.handle_request()
@@ -113,14 +116,16 @@ def test_http_handler_parser_retries_and_sanitizes_without_sockets(files, memory
     assert stat.S_IMODE(files[1].stat().st_mode) == 0o600
     assert 'Kite login saved. You can close this tab.' in responses
     captured = capsys.readouterr()
-    assert all(value not in responses + captured.out + captured.err for value in [TOKEN, ACCESS, SECRET])
+    assert all(value not in responses + captured.out + captured.err
+               for value in [TOKEN, ACCESS, SECRET, listener.state])
 
 
 def test_cli_notify_and_capture_without_sockets(files, monkeypatch, memory_server, capsys):
     listeners, reminders, opened = [], [], []
     def listener(*args, **kwargs):
         result = KiteLoginListener(*args, **kwargs)
-        result.server.requests.append(f'GET {CALLBACK} HTTP/1.0\r\n\r\n'.encode())
+        result.server.requests.append(
+            f'GET {CALLBACK}&state={result.state} HTTP/1.0\r\nHost: 127.0.0.1:0\r\n\r\n'.encode())
         listeners.append(result)
         return result
     def browser(url):
@@ -132,9 +137,12 @@ def test_cli_notify_and_capture_without_sockets(files, monkeypatch, memory_serve
     monkeypatch.setattr(cli.webbrowser, 'open', browser)
     assert cli.main(args_for(files) + ['--notify']) == 0
     assert len(opened) == 1 and reminders == [True]
+    query = parse_qs(urlsplit(opened[0]).query)
+    assert parse_qs(query['redirect_params'][0]) == {'state': [listeners[0].state]}
     captured = capsys.readouterr()
     assert 'Kite session saved; valid until' in captured.out
-    assert all(value not in captured.out + captured.err for value in [TOKEN, ACCESS, SECRET])
+    assert all(value not in captured.out + captured.err
+               for value in [TOKEN, ACCESS, SECRET, listeners[0].state])
 
 
 def test_cli_bind_failure_sanitized_without_sockets(files, monkeypatch, capsys):
@@ -168,6 +176,91 @@ def get(port, path):
 CALLBACK = '/kite?status=success&request_token=' + TOKEN
 
 
+@pytest.mark.parametrize('suffix,host', [
+    ('', '127.0.0.1:0'),
+    ('&state=wrong', '127.0.0.1:0'),
+    ('&state=', '127.0.0.1:0'),
+    ('&state=%C3%A9', '127.0.0.1:0'),
+    ('&state={state}&state={state}', '127.0.0.1:0'),
+    ('&state={state}&state=', '127.0.0.1:0'),
+    ('&state={state}', 'attacker.example:0'),
+    ('&state={state}', '127.0.0.1:8742'),
+    ('&state={state}', 'localhost'),
+    ('&state={state}', ''),
+    ('&state={state}', '127.0.0.1:0\r\nHost: localhost:0'),
+])
+def test_callback_rejected_before_exchange(files, memory_server, capsys, caplog, suffix, host):
+    calls = []
+    def capture(*args):
+        calls.append(args)
+        return exchange(*args)
+    with KiteLoginListener(*files, port=0, exchange=capture) as listener:
+        path = CALLBACK + suffix.format(state=listener.state)
+        header = f'Host: {host}\r\n' if host else ''
+        listener.server.requests.append(f'GET {path} HTTP/1.0\r\n{header}\r\n'.encode())
+        listener.server.handle_request()
+        response = listener.server.responses[-1]
+        assert ' 400 ' in response.splitlines()[0]
+        assert calls == [] and listener.session is None
+        assert not files[1].exists()
+        # A rejected request does not prevent a subsequent valid login.
+        listener.server.requests.append(
+            f'GET {CALLBACK}&state={listener.state} HTTP/1.0\r\nHost: localhost:0\r\n\r\n'.encode())
+        assert listener.wait()['access_token'] == ACCESS
+        assert len(calls) == 1
+    captured = capsys.readouterr()
+    assert all(value not in ''.join(listener.server.responses) + captured.out + captured.err + caplog.text
+               for value in [TOKEN, ACCESS, SECRET, listener.state, path])
+
+
+@pytest.mark.parametrize('failure', ['state', 'status', 'token', 'exchange', 'mixed'])
+def test_cli_five_invalid_callbacks_abort(files, monkeypatch, memory_server, capsys, caplog, failure):
+    listeners, calls = [], []
+    def fail_exchange(*args):
+        calls.append(args)
+        raise KiteError(SECRET + TOKEN + listeners[0].state)
+    def listener(*args, **kwargs):
+        result = KiteLoginListener(*args, **kwargs)
+        listeners.append(result)
+        valid = CALLBACK + '&state=' + result.state
+        paths = {
+            'state': CALLBACK,
+            'status': valid.replace('status=success', 'status=error'),
+            'token': valid.replace(TOKEN, 'bad%2Ftoken'),
+            'exchange': valid,
+        }
+        failures = ['state', 'status', 'token', 'exchange', 'state'] if failure == 'mixed' else [failure] * 5
+        for kind in failures:
+            result.server.requests.append(
+                f'GET {paths[kind]} HTTP/1.0\r\nHost: localhost:0\r\n\r\n'.encode())
+        # This valid sixth request must never be consumed after the limit.
+        result.server.requests.append(
+            f'GET {valid} HTTP/1.0\r\nHost: localhost:0\r\n\r\n'.encode())
+        return result
+    monkeypatch.setattr(cli, 'KiteLoginListener', listener)
+    monkeypatch.setattr(cli, 'create_session', fail_exchange)
+    monkeypatch.setattr(cli.webbrowser, 'open', lambda *a: pytest.fail('no browser requested'))
+    assert cli.main(args_for(files) + ['--no-browser']) == 2
+    result = listeners[0]
+    assert result.server.closed and result.failed_attempts == 5
+    assert len(result.server.requests) == 1
+    assert len(result.server.responses) == 5
+    assert all(' 400 ' in response.splitlines()[0] for response in result.server.responses)
+    assert len(calls) == (5 if failure == 'exchange' else 1 if failure == 'mixed' else 0)
+    assert not files[1].exists()
+    captured = capsys.readouterr()
+    assert 'Too many invalid Kite login callbacks; run autopsy kite login again' in captured.err
+    assert 'Traceback' not in captured.err
+    assert all(value not in captured.out + captured.err + ''.join(result.server.responses) + caplog.text
+               for value in [TOKEN, ACCESS, SECRET, result.state])
+
+
+def test_state_is_fresh_per_listener(files, memory_server):
+    with KiteLoginListener(*files) as first, KiteLoginListener(*files) as second:
+        assert first.state != second.state
+        assert len(first.state) == len(second.state) == 43
+
+
 def test_listener_real_http_private_session_and_retry(files, capsys, caplog, loopback):
     calls = []
     def retry(*args):
@@ -183,15 +276,14 @@ def test_listener_real_http_private_session_and_retry(files, capsys, caplog, loo
                 assert get(listener.port, path)[0] == 404
                 assert not waiting.done()
             for path in ['/kite?status=error&request_token=' + TOKEN,
-                         '/kite?request_token=' + TOKEN,
                          '/kite?status=success&request_token=bad%2Ftoken',
                          '/kite?status=success&request_token=A&request_token=B']:
-                assert get(listener.port, path) == (400, '<!doctype html><meta charset="utf-8"><p>Login failed; try again</p>')
+                assert get(listener.port, path + '&state=' + listener.state) == (400, '<!doctype html><meta charset="utf-8"><p>Login failed; try again</p>')
                 assert not waiting.done()
             assert calls == []
-            failed = get(listener.port, CALLBACK)
+            failed = get(listener.port, CALLBACK + '&state=' + listener.state)
             assert failed[0] == 400
-            status, body = get(listener.port, CALLBACK)
+            status, body = get(listener.port, CALLBACK + '&state=' + listener.state)
             assert status == 200 and 'Kite login saved. You can close this tab.' in body
             assert waiting.result(timeout=2)['access_token'] == ACCESS
     assert len(calls) == 2
@@ -199,7 +291,7 @@ def test_listener_real_http_private_session_and_retry(files, capsys, caplog, loo
     assert read_session(files[1], now=NOW)['access_token'] == ACCESS
     captured = capsys.readouterr()
     assert all(value not in body + failed[1] + captured.out + captured.err + caplog.text
-               for value in [TOKEN, ACCESS, SECRET])
+               for value in [TOKEN, ACCESS, SECRET, listener.state])
     # Context manager releases the listening socket after success.
     with socket.socket() as probe:
         assert probe.connect_ex(('127.0.0.1', listener.port)) != 0
@@ -258,7 +350,8 @@ def test_cli_default_capture_notify_opens_browser(files, monkeypatch, capsys, lo
     threads = []
     def browser(url):
         opened.append(url)
-        thread = threading.Thread(target=lambda: responses.append(get(listeners[0].port, CALLBACK)))
+        thread = threading.Thread(target=lambda: responses.append(
+            get(listeners[0].port, CALLBACK + '&state=' + listeners[0].state)))
         threads.append(thread)
         thread.start()
         return True
@@ -274,7 +367,8 @@ def test_cli_default_capture_notify_opens_browser(files, monkeypatch, capsys, lo
     assert responses[0][0] == 200
     captured = capsys.readouterr()
     assert 'Kite session saved; valid until 2026-11-06 06:00:00 IST' in captured.out
-    assert all(value not in captured.out + captured.err + responses[0][1] for value in [TOKEN, ACCESS, SECRET])
+    assert all(value not in captured.out + captured.err + responses[0][1]
+               for value in [TOKEN, ACCESS, SECRET, listeners[0].state])
 
 
 @pytest.mark.parametrize('remaining,skip', [(31, True), (30, True), (29, False), (0, False)])
