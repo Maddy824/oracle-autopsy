@@ -115,3 +115,44 @@ def test_symbol_subset_retains_missing_bar_expectations():
     result = _subset(damaged, damaged.symbol == 'ETF')
     assert len(json.loads(result.attrs['expected_bars'])) == 75
     assert len(result) == 74
+
+
+def test_adjusted_basis_for_research_lock_and_benchmarks(tmp_path, monkeypatch):
+    import pandas as pd
+    from autopsy.cli import _save_inputs, _state
+    from autopsy.data.schedule import combine_prices, with_schedule
+    from autopsy.data.store import load_snapshot
+    from autopsy.research.walkforward import Pick
+    from autopsy.strategies import REGISTRY
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path))
+    # Two invented observations per day over development + the final 12 months.
+    index = pd.date_range('2024-01-01 09:15', periods=400, tz='Asia/Kolkata')
+    frame = pd.DataFrame({'symbol': 'STOCK', 'open': 100., 'high': 102., 'low': 99.,
+                          'close': 101., 'volume': 100.}, index=index)
+    frame = with_schedule(frame, '5min')
+    frame.attrs['price_basis'] = 'adjusted'
+    benchmark = frame.copy()
+    benchmark['symbol'] = 'ETF'
+    benchmark = with_schedule(benchmark, '5min')
+    _save_inputs(combine_prices([frame, benchmark]), 'invented adjusted', benchmark=benchmark)
+    state = _state()
+    for key in ['prices_path', 'benchmark_path']:
+        prices, meta = load_snapshot(state[key])
+        assert prices.attrs['price_basis'] == meta['kind'] == 'adjusted'
+    strategy = next(s for s in REGISTRY.values() if s.mode == 'intraday' and not s.data_check)
+    pick = Pick(strategy.name, strategy.mode, {})
+    def folds(*args, trial_log, **kwargs):
+        trial_log.append(pick.strategy, {}, ['2024-01-01', '2024-02-01'], {'invented': True})
+        return [object()]
+    # Exercise CLI persistence only; selection maths is tested separately.
+    monkeypatch.setattr('autopsy.cli.walk_forward', folds)
+    monkeypatch.setattr('autopsy.cli.select', lambda _: pick)
+    assert main(['research', 'run', '--mode', 'intraday', '--benchmark-symbol', 'ETF']) == 0
+    state = _state()
+    selected = state['selections']['intraday']
+    for key in ['snapshot', 'benchmark_snapshot']:
+        prices, meta = load_snapshot(selected[key])
+        assert prices.attrs['price_basis'] == meta['kind'] == 'adjusted'
+    assert main(['lock', 'create']) == 0
+    prices, meta = load_snapshot(_state()['locked_snapshot'])
+    assert prices.attrs['price_basis'] == meta['kind'] == 'adjusted'

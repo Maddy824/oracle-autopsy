@@ -20,6 +20,12 @@ mode 600. Never log tokens, response bodies, headers or transport exceptions.
 No order API exists here. Request-result caches are verified Parquet snapshots
 under AUTOPSY_DATA_DIR/upstox; cache=False bypasses them. Every result has the
 observed-session expected_bars JSON grid documented in data.schedule.
+
+V3 history is split/bonus-adjusted, with no raw option (Upstox Community,
+October 2026 clarification by Ketan):
+https://community.upstox.com/t/clarification-on-upstox-historical-candle-v3-data-usage-for-personal-backtesting-and-ml-research/18061
+Dividends are not adjusted. Returned candles
+carry price_basis='adjusted'; never apply corporate actions a second time.
 """
 
 from datetime import date, datetime
@@ -150,7 +156,10 @@ class UpstoxClient:
                 except (KeyError, TypeError, ValueError, OverflowError):
                     raise UpstoxError("Invalid Upstox V3 candle response; expected aware OHLCV arrays") from None
                 if self._cache:
-                    _write_snapshot(frame, path, "raw", url)
+                    frame.attrs["price_basis"] = "adjusted"
+                    _write_snapshot(frame, path, "adjusted", url)
+            # Older request caches were incorrectly labelled raw.
+            frame.attrs["price_basis"] = "adjusted"
             frames.append(frame)
         return combine_prices(frames)
 
