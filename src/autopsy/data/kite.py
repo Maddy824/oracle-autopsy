@@ -344,6 +344,21 @@ class KiteClient:
                 cached = frame.attrs.get("kite_symbol") == symbol and (frame.symbol == symbol).all()
             if not cached:
                 frame = _frame(self._request(endpoint, params=params), symbol)
+                # Kite returns all-zero OHLC rows with volume before some
+                # listings (MAZDOCK, monthly 2017-18). No trade price exists, so
+                # drop them; partially zero rows still fail validation below.
+                frame = frame[~(frame[["open", "high", "low", "close"]] == 0).all(axis=1)]
+                if interval == "day":
+                    # Kite stamps some older daily candles 09:15 instead of
+                    # midnight (seen for COALINDIA/ONGC from 2016), and at the
+                    # switch repeats one day under both stamps with identical
+                    # values. A daily bar is a date: identical repeats collapse;
+                    # differing bars on one date are rejected.
+                    frame.index = frame.index.normalize()
+                    frame = frame[~(frame.index.duplicated()
+                                    & frame.reset_index().duplicated().to_numpy())]
+                    if frame.index.has_duplicates:
+                        raise KiteError("Invalid Kite candles; conflicting daily bars on one date")
             try:
                 if ((frame.index < lower) | (frame.index > upper)).any():
                     raise ValueError()

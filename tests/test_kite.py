@@ -511,3 +511,39 @@ def test_reused_instrument_token_refetches_old_symbol_cache(files, tmp_path):
     pd.testing.assert_frame_equal(result, fetch(client, symbol='NSE:NEWNAME'))
     assert len(calls) == 4
     assert len(list((tmp_path / 'cache').glob('*.parquet'))) == 1
+
+
+def _daily(rows):
+    def handle(request):
+        if request.url.path == '/instruments/NSE':
+            return httpx.Response(200, content=CSV)
+        return httpx.Response(200, json={'status': 'success', 'data': {'candles': rows}})
+    return handle
+
+
+def test_daily_candles_stamped_0915_become_dates_and_identical_repeats_collapse(files):
+    # Invented rows modelled on Kite's 2015/16 switch from 00:00 to 09:15 stamps.
+    rows = [['2025-01-01T00:00:00+0530', 100, 102, 99, 101, 20],
+            ['2025-01-01T09:15:00+0530', 100, 102, 99, 101, 20],
+            ['2025-01-02T09:15:00+0530', 101, 103, 100, 102, 30]]
+    prices = fetch(client_for(files, _daily(rows)), interval='day', start='2025-01-01', end='2025-01-02')
+    assert list(prices.index) == [pd.Timestamp('2025-01-01', tz='Asia/Kolkata'),
+                                  pd.Timestamp('2025-01-02', tz='Asia/Kolkata')]
+    assert prices.close.tolist() == [101, 102]
+
+
+def test_conflicting_daily_bars_on_one_date_are_rejected(files):
+    rows = [['2025-01-01T00:00:00+0530', 100, 102, 99, 101, 20],
+            ['2025-01-01T09:15:00+0530', 100, 102, 99, 105, 20]]
+    with pytest.raises(KiteError, match='conflicting daily bars'):
+        fetch(client_for(files, _daily(rows)), interval='day', start='2025-01-01', end='2025-01-01')
+
+
+def test_all_zero_price_rows_are_dropped_but_partial_zeros_fail(files):
+    rows = [['2025-01-01T00:00:00+0530', 0, 0, 0, 0, 7000],
+            ['2025-01-02T00:00:00+0530', 101, 103, 100, 102, 30]]
+    prices = fetch(client_for(files, _daily(rows)), interval='day', start='2025-01-01', end='2025-01-02')
+    assert prices.close.tolist() == [102]
+    bad = [['2025-01-02T00:00:00+0530', 101, 103, 100, 0, 30]]
+    with pytest.raises(KiteError):
+        fetch(client_for(files, _daily(bad)), interval='day', start='2025-01-02', end='2025-01-02')
