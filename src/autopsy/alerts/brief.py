@@ -9,8 +9,8 @@ import pandas as pd
 
 INDEX = "NSE:NIFTY 50"
 VIX = "NSE:INDIA VIX"
-DEFAULT_STATUS = ("no strategy has passed yet. earnings_reaction was rejected on 6 Nov 2026; "
-                  "a 1-10 day swing family is being designed.")
+DEFAULT_STATUS = ("none has passed yet (6 versions tested on real data, all rejected). "
+                  "Next: monthly momentum, waiting for historical index membership.")
 LOGIN_NEEDED = ("Oracle Autopsy: no brief tonight, the Kite login has expired. "
                 "Run `autopsy kite login` on your Mac, then `autopsy brief`.")
 
@@ -23,7 +23,7 @@ def _name(symbol):
     return symbol.split(":", 1)[1]
 
 
-def format_brief(quotes, index_closes, *, now, status=DEFAULT_STATUS, index=INDEX, vix=VIX):
+def format_brief(quotes, index_closes, *, now, status=DEFAULT_STATUS, index=INDEX, vix=VIX, headlines=None):
     """quotes: {symbol: {last_price, prev_close, last_trade_time}} from KiteClient.quotes.
     index_closes: daily index closes (Series indexed by date) before today."""
     now = pd.Timestamp(now).tz_convert("Asia/Kolkata")
@@ -58,16 +58,22 @@ def format_brief(quotes, index_closes, *, now, status=DEFAULT_STATUS, index=INDE
         lines.append(f"Tracked stocks: {up} up, {down} down of {len(moves)}")
         lines.append("Top: " + ", ".join(f"{_name(s)} {moves[s]:+.1f}%" for s in reversed(ranked[-3:])))
         lines.append("Bottom: " + ", ".join(f"{_name(s)} {moves[s]:+.1f}%" for s in ranked[:3]))
+    if headlines is not None:
+        if headlines:
+            lines.append("News (Economic Times, context only):")
+            lines.extend(f"- {item['title']} {item['link']}" for item in headlines)
+        else:
+            lines.append("News: unavailable tonight.")
     lines.append(f"Strategy: {status}")
     lines.append("Paper only. Not investment advice.")
     return "\n".join(lines)
 
 
-def daily_brief(client, symbols, *, now=None, status=DEFAULT_STATUS, index=INDEX, vix=VIX):
+def daily_brief(client, symbols, *, now=None, status=DEFAULT_STATUS, index=INDEX, vix=VIX, headlines=None):
     """Fetch read-only quotes and index history with a KiteClient; return the text."""
     now = pd.Timestamp.now(tz="Asia/Kolkata") if now is None else pd.Timestamp(now).tz_convert("Asia/Kolkata")
     quotes = client.quotes(list(dict.fromkeys([*symbols, index, vix])))
     history = client.candles(index, "day", (now - pd.Timedelta(days=420)).date(),
                              (now - pd.Timedelta(days=1)).date())
     closes = pd.Series(history["close"].to_numpy(), index=history.index.normalize())
-    return format_brief(quotes, closes, now=now, status=status, index=index, vix=vix)
+    return format_brief(quotes, closes, now=now, status=status, index=index, vix=vix, headlines=headlines)

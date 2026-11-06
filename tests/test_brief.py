@@ -82,6 +82,14 @@ def test_cli_sends_login_reminder_when_session_missing(tmp_path, capsys):
     symbols = tmp_path / "s.txt"
     symbols.write_text("NSE:AAA\n")
     code = main(["brief", "--symbols", str(symbols), "--credentials", str(tmp_path / "none.json"),
-                 "--session", str(tmp_path / "none2.json")])
+                 "--session", str(tmp_path / "none2.json"), "--no-news"])
     assert code == 2
     assert LOGIN_NEEDED in capsys.readouterr().out
+
+
+def test_brief_lists_headlines_or_says_unavailable():
+    item = {"title": "Markets rise", "link": "https://example.com/a", "published_at": None}
+    quotes = {"NSE:AAA": q(101, 100)}
+    assert "- Markets rise https://example.com/a" in format_brief(quotes, closes(5), now=NOW, headlines=[item])
+    assert "News: unavailable tonight." in format_brief(quotes, closes(5), now=NOW, headlines=[])
+    assert "News" not in format_brief(quotes, closes(5), now=NOW)

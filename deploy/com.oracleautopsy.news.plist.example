@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.oracleautopsy.news</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__REPO__/.venv/bin/autopsy</string>
+		<string>news</string>
+		<string>poll</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__REPO__</string>
+	<key>StartInterval</key>
+	<integer>3600</integer>
+	<key>StandardOutPath</key>
+	<string>__HOME__/oracle-autopsy-data/logs/news.log</string>
+	<key>StandardErrorPath</key>
+	<string>__HOME__/oracle-autopsy-data/logs/news-error.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+</dict>
+</plist>
