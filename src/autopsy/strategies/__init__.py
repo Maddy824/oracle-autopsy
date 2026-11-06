@@ -31,7 +31,7 @@ class Strategy:
         }))
 
 
-from autopsy.strategies import earnings_reaction, events, intraday, swing  # noqa: E402
+from autopsy.strategies import earnings_reaction, events, intraday, swing, weekly_loser_reversal  # noqa: E402
 
 
 _base_registry = {
@@ -45,6 +45,8 @@ _base_registry = {
         Strategy("short_reversal", "swing", {"lookback": [3, 5]}, swing.reversal_features, swing.reversal_signals),
         Strategy("earnings_reaction", "swing", {"variant": list(earnings_reaction.VARIANTS)},
                  earnings_reaction.features, earnings_reaction.signals, earnings_reaction.data_check),
+        Strategy("weekly_loser_reversal", "swing", {"variant": ["h5", "h10"]},
+                 weekly_loser_reversal.features, weekly_loser_reversal.signals, weekly_loser_reversal.data_check),
         Strategy("earnings_continuation", "swing", {"holding_days": [1, 3, 5], "delay": events.DELAYS},
                  events.earnings_features, events.earnings_signals, events.earnings_data_check),
         Strategy("post_results_orb", "intraday", {"delay": events.DELAYS},

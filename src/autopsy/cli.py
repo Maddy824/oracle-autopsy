@@ -237,8 +237,8 @@ def _research(args):
         if args.index_symbol not in set(prices.symbol):
             raise SetupError('Index symbol must be present in imported prices.')
         prices = attach_index(prices, args.index_symbol)
-    elif args.strategy == 'earnings_reaction':
-        raise SetupError('earnings_reaction requires --index-symbol and daily Nifty prices.')
+    elif args.strategy in ('earnings_reaction', 'weekly_loser_reversal'):
+        raise SetupError(f'{args.strategy} requires --index-symbol and daily Nifty prices.')
     if args.benchmark_symbol:
         prices = _subset(prices, prices.symbol != args.benchmark_symbol)
     if prices.empty:
@@ -291,6 +291,11 @@ def _research(args):
         state['preview_path'] = str(path)
         _save(state)
         print("Selection: CAN'T TELL. No candidate has 30 completed trades in every development fold. NO-GO.")
+        return 0
+    if pick.strategy == 'weekly_loser_reversal' and not pick.median_fold_net_sharpe > 0:
+        state.setdefault('selections', {}).pop(args.mode, None)
+        _save(state)
+        print('weekly_loser_reversal: NO-GO. Development median Sharpe is not positive; holdout stays sealed.')
         return 0
     # Freeze event evidence with prices; later imports cannot rewrite selection.
     snapshot = save_snapshot(prices, prices.attrs.get('price_basis', 'raw'), state['source'] + '; research input')

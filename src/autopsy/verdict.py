@@ -29,7 +29,7 @@ class Verdict:
     stats: dict
 
 
-def _data_check(prices, lock):
+def _data_check(prices, lock, *, max_missing=.02):
     schedule = prices.attrs.get("expected_bars")
     if schedule is None:
         return CheckResult("data", "CAN'T TELL", {"reason": "expected bar schedule unavailable"})
@@ -42,7 +42,7 @@ def _data_check(prices, lock):
         if not expected:
             raise ValueError("empty expected schedule")
         missing = len(expected - actual) / len(expected)
-        status = "CAN'T TELL" if missing > .02 else "PASS"
+        status = "CAN'T TELL" if missing > max_missing else "PASS"
         if actual - expected:
             status = "FAIL"
         return CheckResult("data", status, {"missing_fraction": missing,
@@ -117,7 +117,9 @@ def decide(pick, locked_record, checks, lock):
            for index in indices):
         checks.append(CheckResult("window", "FAIL", {"reason": "record includes bars or fills outside locked window"}))
         return _finish(checks, stats)
-    checks.append(_data_check(record.prices, lock))
+    # Exact session caps cannot be verified across missing scheduled bars.
+    checks.append(_data_check(record.prices, lock,
+                              max_missing=0 if pick.strategy == "weekly_loser_reversal" else .02))
     execution = _execution_check(pick, record)
     checks.append(execution)
     checks.append(check_ledger(record))
@@ -127,7 +129,7 @@ def decide(pick, locked_record, checks, lock):
         return _finish(checks, stats)
     if strategy.data_check is not None:
         checks.append(strategy.data_check(record.prices))
-    full_portfolio = pick.strategy == "earnings_reaction"
+    full_portfolio = pick.strategy in ("earnings_reaction", "weekly_loser_reversal")
     portfolio_check = CheckResult("random_portfolio", "CAN'T TELL", {
         "reason": "Full-portfolio random comparison has not completed." if full_portfolio else
                   "Legacy random sampler does not enforce cash, five-position limits, sizing or managed stops."})
@@ -135,6 +137,10 @@ def decide(pick, locked_record, checks, lock):
     stats["random_entry_matching"] = (
         "full portfolio: event-season order counts, uniform symbols and random priority, own ATR20, shared engine"
         if full_portfolio else "independent completed trades; no portfolio constraints")
+    if pick.strategy == "weekly_loser_reversal":
+        stats["random_entry_matching"] = (
+            "full portfolio: signal dates and order counts, uniform history-eligible symbols without loser filter, "
+            "random priority, own ATR20, shared engine")
     feature_fn = lambda prices: strategy.features(prices, pick.params)
     names = {check.name for check in checks}
     if "lookahead" not in names:
@@ -164,7 +170,8 @@ def decide(pick, locked_record, checks, lock):
                               {"lower": stats["bootstrap_lower"], "alpha": .05}))
     try:
         if full_portfolio:
-            baseline = random_portfolio_baseline(record, pick.params, runs=1000, seed=0)
+            family = {"family": pick.strategy} if pick.strategy == "weekly_loser_reversal" else {}
+            baseline = random_portfolio_baseline(record, pick.params, runs=1000, seed=0, **family)
             checks[checks.index(portfolio_check)] = CheckResult("random_portfolio", "PASS", {
                 "method": "full_engine", "runs": 1000, "seed": 0,
                 "metric": "final marked equity minus start cash"})
