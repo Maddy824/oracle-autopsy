@@ -70,3 +70,11 @@ in Kite's list and cannot enter the universe (for example HDFC Ltd, merged
 2023; DHFL, delisted 2021). The result must name this limit. The earlier
 ">10% missing member-months makes CAN'T TELL" rule cannot be computed without
 true membership and is dropped; the verdict states the bias instead.
+
+**Amendment 1a (same day, still before any price download):** "plain NSE
+equity symbol" means Kite instruments with segment `NSE`, instrument_type
+`EQ`, no `-` in the trading symbol, excluding funds: name matching
+`\bETF\b|BEES|\bINAV\b|\bNAV$|AMC\s*-|\bFUND\b|\bREIT\b|\bINVIT\b|BHARAT BOND`
+(case-insensitive) or symbol ending `BEES|IETF|ETF|INAV`. On the 2026-11-05
+list this keeps 2,383 companies and drops 715 funds. History requested from
+2014-01-01 for the 253-session warm-up.
