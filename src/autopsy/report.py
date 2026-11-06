@@ -194,6 +194,12 @@ def render_report(verdicts, records, trial_log, out_path, *, slab_rate=30):
             parts.append('<ul>' + ''.join(f'<li>{_text(reason)}</li>' for reason in verdict.reasons) + '</ul>')
         for note in verdict.stats.get('notes', []):
             parts.append(f'<p class="muted">{_text(note)}</p>')
+        if verdict.stats.get('survivorship_bias'):
+            parts.append(f'<p class="muted">{_text(verdict.stats["survivorship_bias"])}</p>')
+        nifty50 = verdict.stats.get('nifty50_buy_and_hold')
+        if nifty50 is not None:
+            parts.append(f'<p>Nifty 50 buy-and-hold (context only): {_money(nifty50["net_profit"])}; '
+                         f'Sharpe {_number(nifty50["sharpe"])}. {_text(nifty50["basis"])}</p>')
         parts.append('<h3>Equity against the reference ledger</h3>')
         parts.append(_chart(record, ledger, index))
         parts.append('<p>Nifty 50 ETF: context, not a gate. When available, buy-and-hold is normalized to starting capital, before ETF costs and tax.</p>')

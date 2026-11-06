@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import floor, isfinite
 from numbers import Integral
 from typing import Literal
@@ -31,6 +31,7 @@ class Signal:
     priority: float = 0.0
     risk_distance: float | None = None
     holding_sessions: int | None = None
+    equity_fraction: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.time, pd.Timestamp) or pd.isna(self.time) or self.time.tz is None:
@@ -43,6 +44,11 @@ class Signal:
         object.__setattr__(self, "target", int(self.target))
         if not isfinite(self.priority):
             raise ValueError("priority must be finite")
+        if self.equity_fraction is not None and (
+            not isfinite(self.equity_fraction) or not 0 < self.equity_fraction <= 1
+            or self.target != 1 or self.risk_distance is not None
+        ):
+            raise ValueError("equity_fraction requires an unmanaged long entry and a fraction in (0, 1]")
         if self.risk_distance is not None and (not isfinite(self.risk_distance) or self.risk_distance <= 0):
             raise ValueError("risk_distance must be finite and positive")
         if self.holding_sessions is not None and (
@@ -57,6 +63,27 @@ class Signal:
 
 
 @dataclass(frozen=True)
+class Rebalance:
+    """Close-observed portfolio target: sell next session, buy two sessions later.
+
+    Universe is the point-in-time sampling pool, independent of score ranking.
+    The index schedule, rather than the next available stock bar, sets execution.
+    """
+
+    time: pd.Timestamp
+    symbols: tuple[str, ...]
+    universe: tuple[str, ...]
+
+    def __post_init__(self):
+        if not isinstance(self.time, pd.Timestamp) or self.time.tz is None or pd.isna(self.time):
+            raise ValueError("rebalance time must be tz-aware")
+        if len(set(self.symbols)) != len(self.symbols) or len(self.symbols) > 5:
+            raise ValueError("rebalance requires at most five distinct targets")
+        if not set(self.symbols) <= set(self.universe):
+            raise ValueError("targets must belong to the point-in-time universe")
+
+
+@dataclass(frozen=True)
 class _PreparedPrices:
     """Validated, reusable market inputs; no portfolio state is shared."""
 
@@ -65,9 +92,10 @@ class _PreparedPrices:
     sessions: tuple
     index: pd.DatetimeIndex
     cutoff: dict
+    rebalance_schedule: tuple = ()
 
 
-def _prepare_prices(prices, mode):
+def _prepare_prices(prices, mode, *, calendar_index=None):
     prices = _validated_prices(prices).sort_index(kind="stable")
     if not np.isfinite(prices.open).all() or (prices.open <= 0).any():
         raise ValueError("open prices must be finite and positive")
@@ -81,13 +109,27 @@ def _prepare_prices(prices, mode):
         next_times = {symbol: following.get((time, symbol)) for symbol in opens}
         actions = bars if "share_multiplier" in bars else None
         sessions.append((time, time.normalize(), opens, closes, next_times, actions))
-    return _PreparedPrices(prices, symbol_times, tuple(sessions), prices.index.unique(),
+    if calendar_index is not None:
+        by_time = {row[0]: row for row in sessions}
+        sessions = [by_time.get(time, (time, time.normalize(), {}, {}, {}, None)) for time in calendar_index]
+    return _PreparedPrices(prices, symbol_times, tuple(sessions),
+                           prices.index.unique() if calendar_index is None else calendar_index,
                            _intraday_closes(prices) if mode == "intraday" else {})
+
+
+def _prepare_rebalances(prices, rebalances):
+    # Dropping never-selected universe symbols only saves work. Their prices
+    # never affect an order or an equity mark, including in a random portfolio.
+    symbols = {symbol for rebalance in rebalances for symbol in rebalance.universe}
+    from autopsy.strategies.earnings_reaction import _index
+    prepared = _prepare_prices(prices.loc[prices.symbol.isin(symbols)], "swing",
+                               calendar_index=prices.index.unique().sort_values())
+    return replace(prepared, rebalance_schedule=tuple(_index(prices).index))
 
 
 def run_backtest(
     prices: pd.DataFrame,
-    signals: Iterable[Signal],
+    signals: Iterable[Signal | Rebalance],
     mode: Literal["intraday", "swing"],
     capital: float = 200_000,
     *,
@@ -119,14 +161,20 @@ def run_backtest(
     power only on the next observed trading day (T+1). Swing holdings remain
     open at the end of the data. Reported equity is marked independently of
     the reference replay ledger, at each distinct timestamp's close.
+
+    Rebalance targets use the index calendar: sells on D+1, buys on D+2.
+    Each new position's slipped notional plus fees is capped at 20% of the
+    batch's open equity and settled cash. Existing targets are never resized.
     """
-    prepared = _prepare_prices(prices, mode)
+    signals = list(signals)
+    rebalances = [signal for signal in signals if isinstance(signal, Rebalance)]
+    prepared = (_prepare_rebalances(prices, rebalances) if rebalances else _prepare_prices(prices, mode))
     fills, equity = _run_prepared(prepared, signals, mode, capital,
                                   slippage_bps=slippage_bps, rates=rates)
-    return RunRecord(fills, equity, prepared.prices, float(capital))
+    return RunRecord(fills, equity, prices if rebalances else prepared.prices, float(capital))
 
 
-def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rates):
+def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rates, target_selector=None):
     """The single execution path for public backtests and portfolio baselines.
 
     Return fills/equity without repeatedly validating/copying immutable market
@@ -140,6 +188,10 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
     if not isinstance(rates, RateTable):
         raise ValueError("rates must be a verified RateTable")
     signals = list(signals)
+    rebalances = {s.time: s for s in signals if isinstance(s, Rebalance)}
+    if rebalances and mode != "swing":
+        raise ValueError("portfolio rebalances require swing mode")
+    signals = [s for s in signals if not isinstance(s, Rebalance)]
     if any(not isinstance(signal, Signal) for signal in signals):
         raise ValueError("signals must contain Signal records")
     if mode == "swing" and any(signal.target == -1 for signal in signals):
@@ -177,6 +229,12 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
     current_day = None
     equity = []
     managed = {}
+    replacements = []
+    if rebalances:
+        from autopsy.strategies.earnings_reaction import _index
+        schedule = (pd.DatetimeIndex(prepared.rebalance_schedule) if prepared.rebalance_schedule
+                    else _index(prepared.prices).index)
+        session_times = {row[1]: row[0] for row in prepared.sessions}
 
     def fee_for(symbol: str, side: str, qty: int, price: float) -> float:
         return trade_costs(
@@ -223,6 +281,8 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
 
         # A target change closes the existing position before opening its reverse.
         for signal in orders:
+            if signal.symbol not in opens:
+                continue  # An exact-session rebalance order expires if its bar is absent.
             qty = positions.get(signal.symbol, 0)
             if qty and (1 if qty > 0 else -1) != signal.target:
                 execute(signal.symbol, "SELL" if qty > 0 else "BUY", abs(qty))
@@ -232,13 +292,15 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
                                   for symbol, qty in positions.items())
         for signal in orders:
             symbol = signal.symbol
-            if not signal.target or symbol in positions:
+            if not signal.target or symbol in positions or symbol not in opens:
                 continue
             if mode == "intraday" and time >= cutoff[symbol, day]:
                 continue
             if len(positions) >= (1 if mode == "intraday" else 5):
                 continue
             budget = cash - unsettled if signal.risk_distance is not None else min(allocation, cash - unsettled)
+            if signal.equity_fraction is not None:
+                budget = min(signal.equity_fraction * entry_equity, cash - unsettled)
             if budget <= 0:
                 continue
             side = "BUY" if signal.target == 1 else "SELL"
@@ -276,6 +338,24 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
 
         last_close.update(closes)
         equity.append(cash + sum(qty * last_close[symbol] for symbol, qty in positions.items()))
+        rebalance = rebalances.get(time)
+        if rebalance is not None:
+            if target_selector is None:
+                sells = sorted(set(positions) - set(rebalance.symbols))
+                buys = [symbol for symbol in rebalance.symbols if symbol not in positions]
+            else:
+                sells, buys = target_selector(rebalance, tuple(positions))
+            replacements.append({"time": rebalance.time.isoformat(), "sells": len(sells), "buys": len(buys)})
+            location = schedule.get_indexer([day])[0]
+            for offset, symbols, target in ((1, sells, 0), (2, buys, 1)):
+                if location < 0 or location + offset >= len(schedule):
+                    continue
+                execution_time = session_times.get(schedule[location + offset])
+                if execution_time is None:
+                    continue
+                for rank, symbol in enumerate(symbols):
+                    pending[execution_time][symbol] = Signal(rebalance.time, symbol, target,
+                        priority=-float(rank), equity_fraction=.2 if target else None)
 
     curve = pd.Series(equity, index=prepared.index, dtype=float, name="equity")
     # Statistics must reprice with this exact execution configuration. Plain
@@ -289,4 +369,6 @@ def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rat
             "segment_rates": {name: dict(values) for name, values in rates.segment_rates.items()},
         },
     }
+    if rebalances:
+        curve.attrs["autopsy_replacements"] = replacements
     return fills, curve

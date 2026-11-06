@@ -10,7 +10,7 @@ from typing import Literal
 
 import pandas as pd
 
-from autopsy.engine import Signal
+from autopsy.engine import Rebalance, Signal
 from autopsy.checks import CheckResult
 
 
@@ -20,7 +20,7 @@ class Strategy:
     mode: Literal["intraday", "swing"]
     params_grid: Mapping[str, Sequence]
     features: Callable[[pd.DataFrame, dict], pd.DataFrame]
-    signals: Callable[[pd.DataFrame, pd.DataFrame, dict], list[Signal]]
+    signals: Callable[[pd.DataFrame, pd.DataFrame, dict], list[Signal | Rebalance]]
     data_check: Callable[[pd.DataFrame], CheckResult] | None = None
 
     def __post_init__(self):
@@ -31,7 +31,7 @@ class Strategy:
         }))
 
 
-from autopsy.strategies import earnings_reaction, events, intraday, swing, weekly_loser_reversal  # noqa: E402
+from autopsy.strategies import earnings_reaction, events, intraday, swing, weekly_loser_reversal, monthly_momentum  # noqa: E402
 
 
 _base_registry = {
@@ -47,6 +47,8 @@ _base_registry = {
                  earnings_reaction.features, earnings_reaction.signals, earnings_reaction.data_check),
         Strategy("weekly_loser_reversal", "swing", {"variant": ["h5", "h10"]},
                  weekly_loser_reversal.features, weekly_loser_reversal.signals, weekly_loser_reversal.data_check),
+        Strategy("monthly_momentum", "swing", {"variant": ["M12", "M12V"]},
+                 monthly_momentum.features, monthly_momentum.signals, monthly_momentum.data_check),
         Strategy("earnings_continuation", "swing", {"holding_days": [1, 3, 5], "delay": events.DELAYS},
                  events.earnings_features, events.earnings_signals, events.earnings_data_check),
         Strategy("post_results_orb", "intraday", {"delay": events.DELAYS},
