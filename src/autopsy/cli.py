@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pandas as pd
 
+from autopsy.alerts.brief import LOGIN_NEEDED, daily_brief
 from autopsy.alerts.feed import UpstoxIntradayFeed, load_history, replay, run_live
 from autopsy.alerts.notify import TelegramError, notifier_for, notify_kite_login
 from autopsy.alerts.page import render_alerts_page
@@ -19,7 +20,7 @@ from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
 from autopsy.costs import load_rates
 from autopsy.data.kite import (DEFAULT_CREDENTIALS_PATH, DEFAULT_SESSION_PATH, KiteClient, KiteError,
-                               KiteSessionMissing, create_session, login_url, parse_request_token,
+                               KiteCredentialsMissing, KiteSessionMissing, create_session, login_url, parse_request_token,
                                read_credentials, read_session)
 from autopsy.data.kite_login import KiteLoginListener, wait_seconds
 from autopsy.data.nse import load_bhavcopy
@@ -502,6 +503,20 @@ def _scorecard_page(alerts, prices, out, source):
     return 0
 
 
+def _brief(args):
+    notifier = notifier_for(args.notify.split(','))
+    symbols = [line.split('#', 1)[0].strip() for line in Path(args.symbols).read_text().splitlines()]
+    symbols = [s for s in symbols if s]
+    try:
+        client = KiteClient(args.credentials, args.session)
+        text = daily_brief(client, symbols)
+    except (KiteCredentialsMissing, KiteSessionMissing):
+        notifier.send(LOGIN_NEEDED)
+        return 2
+    notifier.send(text)
+    return 0
+
+
 def _alerts(args):
     if args.alerts_command == 'test-notify':
         notifier_for(args.notify.split(',')).send('Oracle Autopsy test: paper alerts reach this device.')
@@ -589,6 +604,11 @@ def _parser():
     live.add_argument('--token-path', default=DEFAULT_TOKEN_PATH)
     alerts.add_parser('scorecard').add_argument('--out', required=True)
     alerts.add_parser('test-notify').add_argument('--notify', default='console,mac')
+    brief = commands.add_parser('brief', help='evening market strip from read-only Kite quotes')
+    brief.add_argument('--symbols', default='deploy/nifty100_2026-11-05.txt')
+    brief.add_argument('--notify', default='console')
+    brief.add_argument('--credentials', default=DEFAULT_CREDENTIALS_PATH)
+    brief.add_argument('--session', default=DEFAULT_SESSION_PATH)
     return parser
 
 
@@ -611,6 +631,8 @@ def main(argv=None):
             return _oracle(args)
         if args.command == 'alerts':
             return _alerts(args)
+        if args.command == 'brief':
+            return _brief(args)
         verdicts, records = _evaluation(_state())
         log = TrialLog()
         if not log.verify():
