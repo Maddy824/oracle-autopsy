@@ -40,3 +40,16 @@ positive. If development fails, the family is rejected and not tuned.
 
 Known limits: survivorship bias (today's members), no dividends, daily bars
 cannot see intraday liquidity or circuit limits.
+
+## Result (6 November 2026, commit 7fd8a11)
+
+Development folds (fresh ₹2,00,000 each, 20 bps slippage): net profit ₹ (net Sharpe).
+
+| Variant | Fold 1 (2015–17) | Fold 2 (2017–20) | Fold 3 (2020–23) | Fold 4 (2023–25) | Median Sharpe |
+|---|---|---|---|---|---|
+| h5 | −16,052 (−0.83) | −38,209 (−1.97) | −14,486 (−0.69) | −9,798 (−0.49) | −0.76 |
+| h10 | −4,860 (−0.25) | −21,152 (−1.11) | +4,527 (0.25) | +3,019 (0.18) | −0.04 |
+
+**NO-GO.** Neither median is positive; the holdout stays sealed and the family
+is rejected as pre-registered. Not to be tuned (e.g. longer holds, regime
+filters) on this evidence. Lifetime real-data trials: 6.
