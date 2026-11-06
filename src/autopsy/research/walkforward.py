@@ -17,8 +17,8 @@ GRIDS = {"intraday": (10, 25, 50), "swing": (5, 10, 25)}
 
 
 def slippage_grid_for(strategy):
-    """The reaction family pre-registers four variants at fixed 10 bps base."""
-    return (10,) if strategy.name == "earnings_reaction" else GRIDS[strategy.mode]
+    """Managed daily families pre-register a fixed 10 bps base."""
+    return (10,) if strategy.name in ("earnings_reaction", "weekly_loser_reversal") else GRIDS[strategy.mode]
 
 
 @dataclass(frozen=True)

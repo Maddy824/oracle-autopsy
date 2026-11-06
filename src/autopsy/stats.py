@@ -261,44 +261,51 @@ def random_entry_baseline(record, prices, runs=1000, seed=0, *, eligible_signal_
     return result
 
 
-class _EarningsPortfolio:
+class _ManagedPortfolio:
     """Prepare once, then replace only symbol selection in managed orders.
 
     Counts mean submitted strategy orders, including capacity/cash rejections,
     not successful fills. Sampling is uniform without replacement per session;
     the draw order supplies random priority. Held symbols remain in the pool,
     just as strategy orders for already-held symbols remain engine inputs.
-    A tradable symbol has a completed bar and positive finite ATR20 that day.
+    Earnings pools require a completed bar and positive finite ATR20 that day;
+    weekly losers use their history eligibility without the loser filter.
     No future bar, return, reaction or event on that symbol filters the pool.
     """
 
-    def __init__(self, record, params):
+    def __init__(self, record, params, family="earnings_reaction"):
         from autopsy.strategies import earnings_reaction as reaction
+        from autopsy.strategies import weekly_loser_reversal as reversal
+
+        strategy = {"earnings_reaction": reaction, "weekly_loser_reversal": reversal}[family]
 
         config = record.reported_equity.attrs.get("autopsy_execution")
         if not isinstance(config, dict) or not {"mode", "slippage_bps", "rates"} <= config.keys():
             raise ValueError("record needs autopsy_execution metadata from run_backtest")
         if config["mode"] != "swing":
-            raise ValueError("earnings portfolio requires swing execution")
+            raise ValueError(f"{'earnings' if strategy is reaction else family} portfolio requires swing execution")
         self.capital = record.start_cash
         self.slippage = config["slippage_bps"]
         self.rates = RateTable(**config["rates"])
         prices = record.prices.loc[record.prices.symbol != record.prices.attrs.get("index_symbol")]
-        check = reaction.data_check(prices)
+        check = strategy.data_check(prices)
         if check.verdict != "PASS":
             raise ValueError(check.evidence["reason"])
         self.prepared = _prepare_prices(prices, "swing")
-        features = reaction.features(prices, params)
-        self.strategy_signals = reaction.signals(prices, features, params)
-        self.hold = reaction.VARIANTS[params["variant"]][0]
-        season = {day for _, day in reaction.event_sessions(prices)}
+        features = strategy.features(prices, params)
+        self.strategy_signals = strategy.signals(prices, features, params)
+        self.hold = (reaction.VARIANTS[params["variant"]][0] if strategy is reaction
+                     else reversal.VARIANTS[params["variant"]])
+        season = {day for _, day in reaction.event_sessions(prices)} if strategy is reaction else None
         counts = {}
         for signal in self.strategy_signals:
-            if signal.time.normalize() not in season:
+            if season is not None and signal.time.normalize() not in season:
                 raise ValueError("strategy order outside eligible event season")
             counts[signal.time] = counts.get(signal.time, 0) + 1
         self.pools = []
         valid = features.loc[np.isfinite(features.atr20) & (features.atr20 > 0)]
+        if strategy is reversal:
+            valid = valid.loc[valid.history_eligible]
         for time, bars in valid.groupby(level=0, sort=True):
             count = counts.get(time, 0)
             if not count:
@@ -314,7 +321,7 @@ class _EarningsPortfolio:
         # warm-up window when constructing the random comparison.
         fills, equity = self.run(self.strategy_signals)
         if fills != record.fills or not equity.equals(record.reported_equity):
-            raise ValueError("earnings portfolio replay does not match strategy record")
+            raise ValueError(f"{'earnings' if strategy is reaction else family} portfolio replay does not match strategy record")
 
     def draw(self, rng):
         signals = []
@@ -330,8 +337,12 @@ class _EarningsPortfolio:
                              slippage_bps=self.slippage, rates=self.rates)
 
 
-def random_portfolio_baseline(record, params, runs=1000, seed=0) -> np.ndarray:
-    """Earnings-family full-engine null: final marked equity minus start cash.
+class _EarningsPortfolio(_ManagedPortfolio):
+    """Compatibility name for the unchanged earnings-family sampler."""
+
+
+def random_portfolio_baseline(record, params, runs=1000, seed=0, *, family="earnings_reaction") -> np.ndarray:
+    """Managed-family full-engine null: final marked equity minus start cash.
 
     Reuse completed ATR and validated market inputs; each seeded run has fresh
     portfolio state and the exact strategy engine, costs and recorded slippage.
@@ -339,7 +350,7 @@ def random_portfolio_baseline(record, params, runs=1000, seed=0) -> np.ndarray:
     need not complete 30 trades. The verdict checks the strategy's trade count.
     """
     _positive_integer(runs, "runs")
-    portfolio = _EarningsPortfolio(record, params)
+    portfolio = _ManagedPortfolio(record, params, family)
     rng = np.random.default_rng(seed)
     result = np.empty(runs)
     for i in range(runs):
