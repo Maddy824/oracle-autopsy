@@ -407,16 +407,52 @@ def test_notifier_mac_and_only_configured_telegram(tmp_path, monkeypatch, config
     monkeypatch.setattr(notify, 'TelegramNotifier', FakeTelegram)
     notify.notify_kite_login()
     assert len(mac) == 1 and telegram == (mac if configured else [])
-    assert "Oracle Autopsy: log in to Kite for tonight's run" in mac[0]
-    assert 'on this Mac, not a phone' in mac[0]
+    assert "Oracle Autopsy: log in to Kite for today" in mac[0]
 
 
 def test_launchagent_template():
     path = Path(__file__).parents[1] / 'deploy/com.oracleautopsy.kite-login.plist.example'
     config = plistlib.loads(path.read_bytes())
     assert config['ProgramArguments'] == ['__REPO__/.venv/bin/autopsy', 'kite', 'login',
-                                          '--if-needed', '--notify', '--wait', '17h']
+                                          '--if-needed', '--notify', '--telegram', '--wait', '9h']
     assert config['StartCalendarInterval'] == [
-        {'Weekday': day, 'Hour': 15, 'Minute': 45} for day in range(1, 6)]
+        {'Weekday': day, 'Hour': 8, 'Minute': 45} for day in range(1, 6)]
     for key in ['StandardOutPath', 'StandardErrorPath']:
         assert config[key].startswith('__HOME__/oracle-autopsy-data/logs/')
+
+
+def test_pasted_phone_redirect_logs_in_with_matching_state(files):
+    seen = []
+    with KiteLoginListener(*files, port=0, wait='90s', exchange=lambda c, s, token: seen.append(token) or {'ok': 1}) as listener:
+        bad = f'http://127.0.0.1:8742/kite?action=login&status=success&request_token=Tok&state=wrong'
+        assert listener.accept_pasted('no url here') is False
+        assert listener.accept_pasted(bad) is False and listener.failed_attempts == 1
+        good = f'here: http://127.0.0.1:8742/kite?action=login&type=login&status=success&request_token=Tok&state={listener.state}'
+        texts = iter([[bad], [good]])
+        assert listener.wait(poll=lambda: next(texts), poll_every=0.) == {'ok': 1}
+    assert seen == ['Tok']
+
+
+def test_telegram_inbox_reads_only_new_messages_from_owner_chat(tmp_path):
+    import json
+    import httpx
+    from autopsy.alerts.notify import TelegramInbox
+    config = tmp_path / 'telegram.json'
+    config.write_text(json.dumps({'bot_token': 'T', 'chat_id': '42'}))
+    config.chmod(0o600)
+    batches = iter([
+        [{'update_id': 7, 'message': {'chat': {'id': 42}, 'text': 'old'}}],
+        [{'update_id': 8, 'message': {'chat': {'id': 42}, 'text': 'mine'}},
+         {'update_id': 9, 'message': {'chat': {'id': 99}, 'text': 'stranger'}},
+         {'update_id': 10, 'message': {'chat': {'id': 42}}}],
+    ])
+    offsets = []
+
+    def handle(request):
+        offsets.append(request.url.params.get('offset'))
+        return httpx.Response(200, json={'ok': True, 'result': next(batches, [])})
+
+    inbox = TelegramInbox(config, transport=httpx.MockTransport(handle))
+    assert inbox.poll() == ['mine']
+    assert inbox.poll() == []
+    assert offsets == [None, '8', '11']

@@ -15,7 +15,7 @@ import pandas as pd
 from autopsy.alerts.brief import LOGIN_NEEDED, daily_brief
 from autopsy.news.headlines import HeadlineArchive, HeadlineError, fetch_feed, latest
 from autopsy.alerts.feed import UpstoxIntradayFeed, load_history, replay, run_live
-from autopsy.alerts.notify import TelegramError, notifier_for, notify_kite_login
+from autopsy.alerts.notify import TelegramError, TelegramInbox, TelegramNotifier, notifier_for, notify_kite_login
 from autopsy.alerts.page import render_alerts_page
 from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
@@ -165,7 +165,13 @@ def _kite_login(args):
             print('Waiting for Kite login in your browser. '
                   'For manual login, rerun with --paste.', flush=True)
         if args.notify:
-            notify_kite_login()
+            notify_kite_login(telegram=False) if args.telegram else notify_kite_login()
+        if args.telegram:
+            TelegramNotifier().send(
+                "Oracle Autopsy: Kite login for today.\n"
+                "On your Mac: use the browser tab that just opened.\n"
+                "On your iPhone: open this link and log in. The last page will fail to load "
+                "(it points at your Mac); copy that page's full address and send it here.\n" + url)
         if not args.no_browser:
             try:
                 webbrowser.open(url)
@@ -189,9 +195,10 @@ def _kite_login(args):
     else:
         with KiteLoginListener(args.credentials, args.session, port=args.port,
                                wait=args.wait, exchange=create_session) as listener:
+            inbox = TelegramInbox() if args.telegram else None
             url = login_url(credentials['api_key'], state=listener.state)
             prompt(url)
-            session = listener.wait()
+            session = listener.wait(poll=inbox.poll if inbox else None)
     expires = pd.Timestamp(session['expires_at']).tz_convert('Asia/Kolkata')
     print(f'Kite session saved; valid until {expires.strftime("%Y-%m-%d %H:%M:%S")} IST')
     return 0
@@ -589,6 +596,7 @@ def _parser():
     kite.add_argument('--paste', action='store_true', help='paste the redirect URL instead of listening')
     kite.add_argument('--if-needed', action='store_true', help='skip if session has at least 30 minutes left')
     kite.add_argument('--notify', action='store_true', help='remind this Mac and configured Telegram chat')
+    kite.add_argument('--telegram', action='store_true', help='send the login link to Telegram and accept the redirect pasted back')
     kite.add_argument('--wait', default='10m', help='login deadline, e.g. 90s, 10m, 18h (default: 10m)')
     kite.add_argument('--port', type=int, default=8742, help='loopback callback port (default: 8742)')
     fetch_kite = data.add_parser('fetch-kite')
