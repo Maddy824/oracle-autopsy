@@ -185,15 +185,35 @@ the first 20 stock sessions in the holdout cannot qualify. Missing index
 prices or absence of timed results for the trading universe produces a setup
 error or CAN'T TELL, not a usable candidate.
 
-The family's random-entry test restricts signal days to sessions eligible
-from timed results for **some** trading symbol; entries occur at the next
-symbol open. It retains actual traded symbols, quantities and realized
-holding durations (including shorter stopped trades), and excludes the index.
-It still samples independently with replacement: overlaps, more than five
-positions and unaffordable portfolios remain possible; equity sizing and
-ATR stops are not replayed. A separate `random_portfolio: CAN'T TELL` gate
-therefore prevents GO until the pre-registered capital-constrained baseline
-exists. This is a partial season/universe match, not the complete benchmark.
+The family's random comparison runs **1,000 full portfolios**, deterministically
+seeded with 0, through the same engine as the strategy. On each eligible results
+event session, it submits the same number of entry orders as the strategy,
+including orders the engine may reject. It draws symbols uniformly without
+replacement from that session's trading rows with positive, finite completed
+ATR20, excludes the index, and randomizes priority. The drawn symbols need not
+have results events or positive reactions themselves. Sessions with no strategy
+orders produce no random orders. Thus order opportunities match; realized
+fills, exposure and holding durations can differ after the shared constraints.
+
+Each run uses the drawn symbol's own `2 * ATR20`, the selected variant's holding
+limit, the five-position cap, 0.25% risk / 20% notional sizing, actual-fill close
+stops, costs, recorded doubled slippage and T+1 cash. Existing holdings remain
+eligible for drawing; repeat orders are ignored by the engine as usual. Final
+marked equity minus starting capital, including open holdings, must **strictly
+exceed the random 95th percentile**. The strategy's own orders are replayed and
+must exactly reproduce its fills and equity before the comparison can run.
+Only successful use of this full baseline lifts `random_portfolio: CAN'T TELL`.
+Families still using the independent-trade sampler retain that blocker.
+
+Validated prices, session opens/closes and ATR are prepared once, with fresh
+portfolio state per run. The offline benchmark (100 symbols × 2,700 daily
+sessions) took 105.9 seconds for 1,000 sequential runs plus 12.6 seconds of
+baseline preparation/replay on the development machine, using one process.
+Reproduce with `.venv/bin/python tests/benchmark_random_portfolio.py`; all
+invented benchmark data stays in tests. See the
+[build handoff](docs/research/2026-11-05-earnings-reaction-build.md) for timing
+and remaining limitations.
+
 Point-in-time NIFTY 100 membership and dividend cash handling are also still
 unavailable; imported symbols form a fixed universe. No claim of an edge is
 made by this implementation.

@@ -9,6 +9,7 @@ import pandas as pd
 
 from autopsy.calendar import _intraday_closes
 from autopsy.costs import RateTable, trade_costs
+from autopsy.engine import Signal, _prepare_prices, _run_prepared
 from autopsy.types import RunRecord, _validated_prices
 
 
@@ -258,6 +259,93 @@ def random_entry_baseline(record, prices, runs=1000, seed=0, *, eligible_signal_
                 seen[row, day_codes[indices]] = True
             result -= direction * turnover + fee
     return result
+
+
+class _EarningsPortfolio:
+    """Prepare once, then replace only symbol selection in managed orders.
+
+    Counts mean submitted strategy orders, including capacity/cash rejections,
+    not successful fills. Sampling is uniform without replacement per session;
+    the draw order supplies random priority. Held symbols remain in the pool,
+    just as strategy orders for already-held symbols remain engine inputs.
+    A tradable symbol has a completed bar and positive finite ATR20 that day.
+    No future bar, return, reaction or event on that symbol filters the pool.
+    """
+
+    def __init__(self, record, params):
+        from autopsy.strategies import earnings_reaction as reaction
+
+        config = record.reported_equity.attrs.get("autopsy_execution")
+        if not isinstance(config, dict) or not {"mode", "slippage_bps", "rates"} <= config.keys():
+            raise ValueError("record needs autopsy_execution metadata from run_backtest")
+        if config["mode"] != "swing":
+            raise ValueError("earnings portfolio requires swing execution")
+        self.capital = record.start_cash
+        self.slippage = config["slippage_bps"]
+        self.rates = RateTable(**config["rates"])
+        prices = record.prices.loc[record.prices.symbol != record.prices.attrs.get("index_symbol")]
+        check = reaction.data_check(prices)
+        if check.verdict != "PASS":
+            raise ValueError(check.evidence["reason"])
+        self.prepared = _prepare_prices(prices, "swing")
+        features = reaction.features(prices, params)
+        self.strategy_signals = reaction.signals(prices, features, params)
+        self.hold = reaction.VARIANTS[params["variant"]][0]
+        season = {day for _, day in reaction.event_sessions(prices)}
+        counts = {}
+        for signal in self.strategy_signals:
+            if signal.time.normalize() not in season:
+                raise ValueError("strategy order outside eligible event season")
+            counts[signal.time] = counts.get(signal.time, 0) + 1
+        self.pools = []
+        valid = features.loc[np.isfinite(features.atr20) & (features.atr20 > 0)]
+        for time, bars in valid.groupby(level=0, sort=True):
+            count = counts.get(time, 0)
+            if not count:
+                continue
+            bars = bars.sort_values("symbol")
+            pool = tuple(zip(bars.symbol, 2 * bars.atr20))
+            if count > len(pool):
+                raise ValueError("insufficient tradable symbols for strategy order count")
+            self.pools.append((time, count, pool))
+
+        # The locked record must actually be this strategy/configuration. This
+        # also guards against accidentally using fill counts or a different
+        # warm-up window when constructing the random comparison.
+        fills, equity = self.run(self.strategy_signals)
+        if fills != record.fills or not equity.equals(record.reported_equity):
+            raise ValueError("earnings portfolio replay does not match strategy record")
+
+    def draw(self, rng):
+        signals = []
+        for time, count, pool in self.pools:
+            for priority, index in enumerate(rng.choice(len(pool), size=count, replace=False)):
+                symbol, distance = pool[index]
+                signals.append(Signal(time, symbol, 1, priority=-float(priority),
+                                      risk_distance=float(distance), holding_sessions=self.hold))
+        return signals
+
+    def run(self, signals):
+        return _run_prepared(self.prepared, signals, "swing", self.capital,
+                             slippage_bps=self.slippage, rates=self.rates)
+
+
+def random_portfolio_baseline(record, params, runs=1000, seed=0) -> np.ndarray:
+    """Earnings-family full-engine null: final marked equity minus start cash.
+
+    Reuse completed ATR and validated market inputs; each seeded run has fresh
+    portfolio state and the exact strategy engine, costs and recorded slippage.
+    Unlike the legacy sampler, open holdings contribute and random portfolios
+    need not complete 30 trades. The verdict checks the strategy's trade count.
+    """
+    _positive_integer(runs, "runs")
+    portfolio = _EarningsPortfolio(record, params)
+    rng = np.random.default_rng(seed)
+    result = np.empty(runs)
+    for i in range(runs):
+        _, equity = portfolio.run(portfolio.draw(rng))
+        result[i] = float(equity.iloc[-1]) - record.start_cash
+    return _values(result, "random portfolio profits")
 
 
 def deflated_sharpe(sr, n_trials, n_obs, skew, kurt) -> float:
