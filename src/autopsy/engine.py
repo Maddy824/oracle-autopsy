@@ -56,6 +56,35 @@ class Signal:
             raise ValueError("managed long entries require both risk_distance and holding_sessions")
 
 
+@dataclass(frozen=True)
+class _PreparedPrices:
+    """Validated, reusable market inputs; no portfolio state is shared."""
+
+    prices: pd.DataFrame
+    symbol_times: dict
+    sessions: tuple
+    index: pd.DatetimeIndex
+    cutoff: dict
+
+
+def _prepare_prices(prices, mode):
+    prices = _validated_prices(prices).sort_index(kind="stable")
+    if not np.isfinite(prices.open).all() or (prices.open <= 0).any():
+        raise ValueError("open prices must be finite and positive")
+    symbol_times = {symbol: bars.index for symbol, bars in prices.groupby("symbol")}
+    following = {(time, symbol): next_time for symbol, times in symbol_times.items()
+                 for time, next_time in zip(times[:-1], times[1:])}
+    sessions = []
+    for time, bars in prices.groupby(level=0, sort=True):
+        opens = dict(zip(bars.symbol, bars.open))
+        closes = dict(zip(bars.symbol, bars.close))
+        next_times = {symbol: following.get((time, symbol)) for symbol in opens}
+        actions = bars if "share_multiplier" in bars else None
+        sessions.append((time, time.normalize(), opens, closes, next_times, actions))
+    return _PreparedPrices(prices, symbol_times, tuple(sessions), prices.index.unique(),
+                           _intraday_closes(prices) if mode == "intraday" else {})
+
+
 def run_backtest(
     prices: pd.DataFrame,
     signals: Iterable[Signal],
@@ -91,6 +120,18 @@ def run_backtest(
     open at the end of the data. Reported equity is marked independently of
     the reference replay ledger, at each distinct timestamp's close.
     """
+    prepared = _prepare_prices(prices, mode)
+    fills, equity = _run_prepared(prepared, signals, mode, capital,
+                                  slippage_bps=slippage_bps, rates=rates)
+    return RunRecord(fills, equity, prepared.prices, float(capital))
+
+
+def _run_prepared(prepared, signals, mode, capital=200_000, *, slippage_bps, rates):
+    """The single execution path for public backtests and portfolio baselines.
+
+    Return fills/equity without repeatedly validating/copying immutable market
+    history into a RunRecord. All cash, positions and pending orders are fresh.
+    """
     if mode not in ("intraday", "swing"):
         raise ValueError("mode must be intraday or swing")
     _validate_start_cash(capital)
@@ -98,10 +139,6 @@ def run_backtest(
         raise ValueError("slippage_bps must be finite and in [0, 10000)")
     if not isinstance(rates, RateTable):
         raise ValueError("rates must be a verified RateTable")
-    prices = _validated_prices(prices).sort_index(kind="stable")
-    if not np.isfinite(prices.open).all() or (prices.open <= 0).any():
-        raise ValueError("open prices must be finite and positive")
-
     signals = list(signals)
     if any(not isinstance(signal, Signal) for signal in signals):
         raise ValueError("signals must contain Signal records")
@@ -109,7 +146,7 @@ def run_backtest(
         raise ValueError("swing signals must be long only")
     if mode != "swing" and any(signal.risk_distance is not None for signal in signals):
         raise ValueError("managed entries require swing mode")
-    symbol_times = {symbol: bars.index for symbol, bars in prices.groupby("symbol")}
+    symbol_times = prepared.symbol_times
     pending: dict[pd.Timestamp, dict[str, Signal]] = defaultdict(dict)
     seen = set()
     for signal in sorted(signals, key=lambda s: (s.time, s.symbol)):
@@ -128,7 +165,7 @@ def run_backtest(
             continue
         pending[execution_time][signal.symbol] = signal
 
-    cutoff = _intraday_closes(prices) if mode == "intraday" else {}
+    cutoff = prepared.cutoff
     segment = "intraday_equity" if mode == "intraday" else "delivery_equity"
     allocation = float(capital) * (1.0 if mode == "intraday" else 0.2)
     fills: list[Fill] = []
@@ -166,19 +203,17 @@ def run_backtest(
             if mode == "swing":
                 unsettled += max(0.0, qty * price - fee)
 
-    for time, bars in prices.groupby(level=0, sort=True):
-        apply_share_actions(positions, bars)
-        if "share_multiplier" in bars:
-            for row in bars.itertuples():
+    for time, day, opens, closes, next_times, actions in prepared.sessions:
+        if actions is not None:
+            apply_share_actions(positions, actions)
+            for row in actions.itertuples():
                 if row.symbol in managed:
                     managed[row.symbol]["stop"] /= row.share_multiplier
-        day = time.normalize()
         if day != current_day:
             # Every new date in these bars is the next observed trading day.
             unsettled = 0.0
             sold_today.clear()
             current_day = day
-        opens = dict(zip(bars.symbol, bars.open))
         orders = sorted(pending.get(time, {}).values(), key=lambda s: (s.time, -s.priority, s.symbol))
         if mode == "intraday":
             for symbol in sorted(positions):
@@ -228,30 +263,24 @@ def run_backtest(
 
         # Completed daily closes schedule exits at the next symbol open. Age
         # matches events._holding_signals: entry day is 0, signal at age N.
-        for row in bars.itertuples():
-            state = managed.get(row.symbol)
+        for symbol, close in closes.items():
+            state = managed.get(symbol)
             if state is None:
                 continue
             state["age"] += int(day != state["day"])
             state["day"] = day
-            if row.close < state["stop"] or state["age"] >= state["hold"]:
-                times = symbol_times[row.symbol]
-                following = times.searchsorted(time, side="right")
-                if following < len(times):
-                    pending[times[following]][row.symbol] = Signal(time, row.symbol, 0)
+            if close < state["stop"] or state["age"] >= state["hold"]:
+                following = next_times[symbol]
+                if following is not None:
+                    pending[following][symbol] = Signal(time, symbol, 0)
 
-        last_close.update(zip(bars.symbol, bars.close))
+        last_close.update(closes)
         equity.append(cash + sum(qty * last_close[symbol] for symbol, qty in positions.items()))
 
-    record = RunRecord(
-        fills,
-        pd.Series(equity, index=prices.index.unique(), dtype=float, name="equity"),
-        prices,
-        float(capital),
-    )
+    curve = pd.Series(equity, index=prepared.index, dtype=float, name="equity")
     # Statistics must reprice with this exact execution configuration. Plain
     # dictionaries survive pandas attrs copies (RateTable contains proxies).
-    record.reported_equity.attrs["autopsy_execution"] = {
+    curve.attrs["autopsy_execution"] = {
         "mode": mode,
         "slippage_bps": float(slippage_bps),
         "rates": {
@@ -260,4 +289,4 @@ def run_backtest(
             "segment_rates": {name: dict(values) for name, values in rates.segment_rates.items()},
         },
     }
-    return record
+    return fills, curve

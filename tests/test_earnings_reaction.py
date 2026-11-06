@@ -302,7 +302,7 @@ def test_cli_index_also_benchmark_and_other_family_filter(tmp_path, monkeypatch)
     assert INDEX not in set(frozen.symbol)
 
 
-def test_unmatched_random_portfolio_cannot_satisfy_preregistered_gate(tmp_path):
+def test_uncomputed_random_portfolio_does_not_lift_gate_with_too_few_trades(tmp_path):
     from test_verdict import seal
     from autopsy.research.walkforward import Pick
     from autopsy.verdict import decide
@@ -312,7 +312,7 @@ def test_unmatched_random_portfolio_cannot_satisfy_preregistered_gate(tmp_path):
     verdict = decide(pick, record, [], seal(tmp_path, pick, prices))
     check = next(check for check in verdict.checks if check.name == "random_portfolio")
     assert check.verdict == "CAN'T TELL" and verdict.verdict == "NO-GO"
-    assert "five-position" in check.evidence["reason"]
+    assert "has not completed" in check.evidence["reason"]
 
 
 def test_season_matched_baseline_samples_only_next_open():

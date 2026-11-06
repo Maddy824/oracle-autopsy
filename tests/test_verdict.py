@@ -53,10 +53,13 @@ def test_second_opening_fails(tmp_path, edge, openings):
     assert f"holdout opened {openings} times" in result.reasons
 
 
-def test_planted_edge_gets_go(tmp_path, edge):
+def test_legacy_planted_edge_keeps_portfolio_gate(tmp_path, edge):
     pick, bars, record = edge
     result = decide(pick, record, [], seal(tmp_path, pick, bars))
-    assert result.verdict == "GO", result
+    assert result.verdict == "NO-GO", result
+    assert next(c for c in result.checks if c.name == "random_portfolio").verdict == "CAN'T TELL"
+    assert verdict_module._finish([c for c in result.checks if c.name != "random_portfolio"],
+                                  result.stats).verdict == "GO"
     assert result.stats["trades"] == 40
     assert result.stats["bootstrap_lower"] > 0
     assert result.stats["net_profit"] > result.stats["random_entry_p95"]
@@ -136,7 +139,11 @@ def test_any_cant_tell_blocks_go(tmp_path, edge, case, monkeypatch):
     elif case in ("drawdown_at_limit", "drawdown_over_limit"):
         monkeypatch.setattr(verdict_module, "max_drawdown", lambda _: -.15 if case == "drawdown_at_limit" else -.15001)
     result = decide(pick, record, checks, lock)
-    assert result.verdict == ("GO" if case in ("context_only", "drawdown_at_limit") else "NO-GO"), result
+    assert result.verdict == "NO-GO"  # legacy sampler cannot lift the portfolio gate
+    # Keep exercising all the other gates independently of that new blocker.
+    without_portfolio = verdict_module._finish(
+        [c for c in result.checks if c.name != "random_portfolio"], result.stats)
+    assert without_portfolio.verdict == ("GO" if case in ("context_only", "drawdown_at_limit") else "NO-GO"), result
     if case == "context_only":
         assert result.stats["dsr"] == 0.
         assert result.stats["beats_nifty_etf_sharpe"] is False
