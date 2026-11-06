@@ -67,6 +67,47 @@ class TelegramNotifier:
             raise TelegramError(f"Telegram send failed (HTTP {response.status_code})")
 
 
+class TelegramInbox:
+    """Read new text messages from the owner's configured chat only.
+
+    Starts after the newest pending update, so old messages are never replayed.
+    Returns texts; never logs them (a pasted Kite redirect holds a request token).
+    """
+
+    def __init__(self, config_path=TELEGRAM_CONFIG, *, transport=None):
+        sender = TelegramNotifier(config_path, transport=transport)
+        self._token, self._chat, self._transport = sender._token, sender._chat, transport
+        self._offset = None
+        updates = self._updates()
+        self._offset = max((u["update_id"] for u in updates), default=-1) + 1
+
+    def _updates(self):
+        params = {"timeout": 0} if self._offset is None else {"timeout": 0, "offset": self._offset}
+        try:
+            with httpx.Client(transport=self._transport, timeout=15., trust_env=False) as client:
+                response = client.get(f"https://api.telegram.org/bot{self._token}/getUpdates", params=params)
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            raise TelegramError("Telegram read failed (network)") from None
+        if response.status_code != 200 or not data.get("ok"):
+            raise TelegramError(f"Telegram read failed (HTTP {response.status_code})")
+        return [u for u in data.get("result", []) if isinstance(u.get("update_id"), int)]
+
+    def poll(self):
+        try:
+            updates = self._updates()
+        except TelegramError:
+            return []
+        if updates:
+            self._offset = max(u["update_id"] for u in updates) + 1
+        texts = []
+        for update in updates:
+            message = update.get("message") or {}
+            if str((message.get("chat") or {}).get("id")) == self._chat and isinstance(message.get("text"), str):
+                texts.append(message["text"])
+        return texts
+
+
 class FanOut:
     def __init__(self, notifiers):
         self.notifiers = notifiers
@@ -84,14 +125,14 @@ def notifier_for(names):
     return FanOut([factories[name]() for name in names])
 
 
-def notify_kite_login():
+def notify_kite_login(telegram=True):
     """Best-effort reminder; Telegram is used only when already configured."""
-    message = "Oracle Autopsy: log in to Kite for tonight's run. Log in on this Mac, not a phone."
+    message = "Oracle Autopsy: log in to Kite for today (valid until 06:00 tomorrow). Use the browser tab on this Mac."
     try:
         MacNotifier().send(message)
     except OSError:
         print('Mac notification unavailable; use the login browser tab on this Mac.', file=sys.stderr)
-    if TELEGRAM_CONFIG.expanduser().exists():
+    if telegram and TELEGRAM_CONFIG.expanduser().exists():
         try:
             TelegramNotifier().send(message)
         except TelegramError:

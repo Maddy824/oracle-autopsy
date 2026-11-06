@@ -89,19 +89,7 @@ class KiteLoginListener:
                 if listener.clock() >= listener.deadline:
                     self.page(408, 'Login timed out; run autopsy kite login again')
                     return
-                try:
-                    query = parse_qs(url.query, keep_blank_values=True)
-                    states = query.get('state', [])
-                    if len(states) != 1 or not hmac.compare_digest(
-                            states[0].encode(), listener.state.encode()):
-                        raise ValueError()
-                    if query.get('status') != ['success']:
-                        raise ValueError()
-                    token = parse_request_token('http://127.0.0.1' + self.path)
-                    listener.session = exchange(credentials_path, session_path, token)
-                except Exception:
-                    # Even an injected exchange must never echo its exception.
-                    listener.failed_attempts += 1
+                if not listener.accept(url.query):
                     self.page(400, 'Login failed; try again')
                     return
                 self.page(200, 'Kite login saved. You can close this tab.')
@@ -113,6 +101,37 @@ class KiteLoginListener:
                             'the port may be busy. Use autopsy kite login --paste.') from None
         self.server.deadline, self.server.clock = self.deadline, clock
         self.port = self.server.server_port
+        self._exchange = lambda token: exchange(credentials_path, session_path, token)
+
+    def accept(self, query):
+        """Validate one redirect query (state, status, token) and exchange it.
+
+        Shared by the loopback callback and a redirect URL pasted back from a
+        phone (e.g. via the owner's Telegram chat). Returns True on success.
+        """
+        if self.session is not None:
+            return True
+        try:
+            parsed = parse_qs(query, keep_blank_values=True)
+            states = parsed.get('state', [])
+            if len(states) != 1 or not hmac.compare_digest(states[0].encode(), self.state.encode()):
+                raise ValueError()
+            if parsed.get('status') != ['success']:
+                raise ValueError()
+            token = parse_request_token('http://127.0.0.1/kite?' + query)
+            self.session = self._exchange(token)
+        except Exception:
+            # Even an injected exchange must never echo its exception.
+            self.failed_attempts += 1
+            return False
+        return True
+
+    def accept_pasted(self, text):
+        """Accept a pasted http://127.0.0.1:<port>/kite?... redirect URL from a phone."""
+        match = re.search(r'https?://(?:127\.0\.0\.1|localhost):\d+/kite\?(\S+)', text or '')
+        if not match:
+            return False
+        return self.accept(match[1])
 
     def __enter__(self):
         return self
@@ -120,8 +139,17 @@ class KiteLoginListener:
     def __exit__(self, *args):
         self.server.server_close()
 
-    def wait(self):
+    def wait(self, poll=None, poll_every=3.):
+        """poll() returns pasted texts (e.g. new Telegram messages); checked every poll_every s."""
+        next_poll = self.clock() if poll is not None else None
         while self.session is None:
+            if poll is not None and self.clock() >= next_poll:
+                next_poll = self.clock() + poll_every
+                for text in poll():
+                    if self.accept_pasted(text):
+                        break
+                if self.session is not None:
+                    break
             if self.failed_attempts >= 5:
                 raise KiteError('Too many invalid Kite login callbacks; run autopsy kite login again')
             remaining = self.deadline - self.clock()
