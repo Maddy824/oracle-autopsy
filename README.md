@@ -31,9 +31,50 @@ On invented random prices with a liquid stock's volatility, the alerts score
 of costs): random prices have no edge, and costs make that visible. On data with
 an edge planted in it, they score **PASS**. The tool can tell the two apart.
 
-Nothing here has been run on real market data yet; that needs an Upstox
-Analytics Token. Paper only: it never places
-orders, and none of it is investment advice.
+Paper only: it never places orders, and none of it is investment advice.
+
+## Use it yourself
+
+You need Python 3.11+, a Zerodha account with a Kite Connect app (₹500/month)
+for prices, and NSE results files you download by hand. No market data is in
+this repo, and none should be committed.
+
+```sh
+git clone https://github.com/Maddy824/oracle-autopsy && cd oracle-autopsy
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]' && pytest -q
+
+# 1. Prices: create ~/.config/oracle-autopsy/kite.json (see "Kite Connect data"), then
+autopsy kite login                       # once a day, by hand; nothing is automated
+autopsy data fetch-kite --symbols deploy/nifty100_2026-11-05.txt --from 2015-01-01 --interval day
+
+# 2. Results dates: download CSVs yourself from NSE (see below), then
+autopsy events import --kind financial_results ~/Downloads/CF-*.csv
+
+# 3. Test the strategy; every run is logged and counted against you
+autopsy research run --mode swing --strategy earnings_reaction --index-symbol "NSE:NIFTY 50"
+```
+
+**NSE results files.** NSE's terms forbid automated collection, so download
+them in a browser and do not redistribute them:
+
+- [Financial Results](https://www.nseindia.com/companies-listing/corporate-filings-financial-results)
+  for quarters up to December 2024: Equity tab, Company empty, Period Ended
+  *Quarterly*, Search By *F&O Securities*, Custom range one calendar year at a
+  time, *Download (.csv)*.
+- [Integrated Filing – Financials](https://www.nseindia.com/companies-listing/corporate-integrated-filing)
+  for quarters from March 2025: Company empty, Custom range, *Download (.csv)*.
+
+Import both together: the older files have no symbol column, so symbols come
+from exact company-name matches in the newer file. Companies that do not match
+are skipped and listed.
+
+**Changing it for your own goal.** Strategies live in `src/autopsy/strategies/`
+and are registered in `strategies/__init__.py`. Write the rules and parameter
+grid down *before* you run anything on real data: the trial log, the sealed
+final year and the random-portfolio check exist so that trying many ideas
+until one looks good is visible and penalised. The NIFTY 100 list is today's
+members, so every backtest on it has survivorship bias; reports say so.
 
 ## Internals
 
