@@ -4,7 +4,7 @@
 
 **Recommendation:** build a small, long-only **post-earnings continuation research and alert tool** first. Use Upstox’s year-long Analytics Token for unattended data, subject to account eligibility; retain Kite for occasional historical downloads and manually authenticated trading. Evidence does **not** yet justify expecting profitable day trading.
 
-The [README](/Users/maddy/B2B/oracle-autopsy/README.md) describes an existing Upstox integration and ORB paper alerts, but no validated live-data operation or strategy GO. The [design](/Users/maddy/B2B/oracle-autopsy/docs/specs/2026-11-02-oracle-autopsy-design.md) already contains suitable event-driven candidates and honesty gates. This was research, not a code audit; no files were changed.
+The [README](../../../README.md) describes an existing Upstox integration and ORB paper alerts, but no validated live-data operation or strategy GO. The [design](../../../docs/specs/2026-11-02-oracle-autopsy-design.md) already contains suitable event-driven candidates and honesty gates. This was research, not a code audit; no files were changed.
 
 | Decision | Recommendation | Confidence |
 |---|---|---|

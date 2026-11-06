@@ -1,6 +1,6 @@
 **A complete 2015–2026 NSE dissemination-time dataset is not yet verified.** The least-manual compliant route is a licensed historical extract, conditional on sample validation. Public archives contain old results, but timestamp coverage varies.
 
-Checked live on **2026-11-05**; no files edited. Your [importer](/Users/maddy/B2B/oracle-autopsy/src/autopsy/news/nse_filings.py) accepts explicit dissemination timestamps only, interprets timezone-less values as IST, and leaves missing times unset.
+Checked live on **2026-11-05**; no files edited. Your [importer](../../../src/autopsy/news/nse_filings.py) accepts explicit dissemination timestamps only, interprets timezone-less values as IST, and leaves missing times unset.
 
 1. **NSE announcements and financial results**
 

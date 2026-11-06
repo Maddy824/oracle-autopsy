@@ -4,7 +4,7 @@
 
    Delivery is more expensive per trade, but holding several days gives a potential drift more room to exceed costs.
 
-   Calculated using [`costs.py`](/Users/maddy/B2B/oracle-autopsy/src/autopsy/costs.py) and the Zerodha rate table, assuming equal buy/sell notionals, one order each and one delivery-sale DP charge:
+   Calculated using [`costs.py`](../../../src/autopsy/costs.py) and the Zerodha rate table, assuming equal buy/sell notionals, one order each and one delivery-sale DP charge:
 
    | Position notional | MIS round trip | Delivery round trip |
    |---|---:|---:|
