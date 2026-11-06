@@ -129,3 +129,32 @@ held symbols in the pool, compare open-position-inclusive account PnL, and lift
 the portfolio gate only after a successful full-engine baseline. The vault and
 ACTIVE_STATE remain outside writable roots, so this repo handoff records the
 state for later reconciliation. No staging, commit or push performed.
+
+## Result on real data (6 November 2026)
+
+Inputs: Kite adjusted daily candles, today's NIFTY 100 plus the Nifty 50 index,
+2015-01-01 to 2026-11-05 (survivorship bias: today's members only). Results
+events from owner-downloaded NSE Financial Results and Integrated Filing
+exports: 3,844 NIFTY 100 symbol-quarters, 67 without a usable publication
+time. **Gap:** NSE's export has no rows from February to December 2023.
+
+Development window 2015-01-01 to 2025-11-05, four chronological folds of
+about 2.7 years, fresh ₹2,00,000 each, slippage doubled to 20 bps. Net profit
+per fold (₹) and net Sharpe:
+
+| Variant | Fold 1 (2015–17) | Fold 2 (2017–20) | Fold 3 (2020–23) | Fold 4 (2023–25) | Median Sharpe |
+|---|---|---|---|---|---|
+| h5_regime | −620 (−0.07) | −10,504 (−1.05) | +5,905 (0.58) | −10,313 (−1.19) | −0.56 |
+| h10_regime | −2,866 (−0.33) | −13,804 (−1.25) | +7,101 (0.63) | −8,126 (−0.90) | −0.62 |
+| h20_regime | −1,607 (−0.15) | −10,996 (−0.81) | +22,104 (1.57) | −1,784 (−0.16) | **−0.15** |
+| h10_noregime | −10,600 (−0.83) | −4,835 (−0.35) | +5,386 (0.43) | −12,927 (−1.37) | −0.59 |
+
+Selected by the pre-registered rule: h20_regime, median fold Sharpe −0.15.
+Every variant lost money in three of four folds; the one profitable fold is
+the 2020–23 recovery. Lifetime trials for this family: 4.
+
+**Decision: do not open the sealed final year.** A negative development
+median cannot become a GO, and opening the holdout to confirm that would spend
+the only clean out-of-sample year on a strategy already rejected. The holdout
+stays sealed for the next pre-registered idea. Do not tune these four
+variants further: that is exactly the search the trial log penalises.
