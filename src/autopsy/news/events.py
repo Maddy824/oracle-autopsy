@@ -121,6 +121,22 @@ class EventLedger:
             _append(stream, {"event": _encode(event)}, _line_hash(rows[-1]) if rows else GENESIS)
         return True
 
+    def add_many(self, events):
+        """Append many events under one lock and one read; return how many were new."""
+        from autopsy.research.trials import GENESIS, _append, _journal, _line_hash, _read
+        with _journal(self.path) as stream:
+            rows = _read(stream)
+            keys = {_decode(row["event"]).dedup_key for row in rows}
+            previous = _line_hash(rows[-1]) if rows else GENESIS
+            added = 0
+            for event in events:
+                if event.dedup_key in keys:
+                    continue
+                previous = _line_hash(_append(stream, {"event": _encode(event)}, previous))
+                keys.add(event.dedup_key)
+                added += 1
+        return added
+
     def events(self):
         from autopsy.research.trials import _journal, _read
         if not self.path.exists():
