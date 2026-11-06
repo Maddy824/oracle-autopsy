@@ -76,6 +76,25 @@ final year and the random-portfolio check exist so that trying many ideas
 until one looks good is visible and penalised. The NIFTY 100 list is today's
 members, so every backtest on it has survivorship bias; reports say so.
 
+## Daily brief and news
+
+```sh
+autopsy brief --notify telegram   # 18:30 market strip + 3 Economic Times headlines
+autopsy news poll                 # archive new ET market headlines (run hourly)
+```
+
+The brief uses read-only Kite quotes: Nifty 50 and its 200-day regime, India
+VIX, NIFTY 100 breadth and movers, three headlines, and the strategy status. If
+the day's Kite login is missing it sends a reminder instead. Telegram needs
+`~/.config/oracle-autopsy/telegram.json` (mode 600) with `bot_token` and
+`chat_id`. Headlines are context only: they are archived with first-seen times
+so they can become a pre-registered factor after a year, never used in
+hindsight. Only sources whose terms allow personal storage are used; see
+`docs/research/sources/2026-11-06-codex-factors-and-news.md`. To schedule on a
+Mac, fill `__REPO__` and `__HOME__` in `deploy/com.oracleautopsy.brief.plist.example`
+and `deploy/com.oracleautopsy.news.plist.example`, copy them to
+`~/Library/LaunchAgents/` without `.example`, and `launchctl load` each.
+
 ## Internals
 
 Task 1 provides validated `Fill` and `RunRecord` types and a reference ledger.
