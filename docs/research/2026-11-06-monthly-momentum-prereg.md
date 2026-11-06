@@ -51,3 +51,22 @@ reported, not gated: buy-and-hold Nifty 50 over the same folds. The sealed
 final 12 months open only if the selected variant's development median Sharpe
 is positive. If development fails, the family is rejected and not tuned.
 Lifetime trials after this family: 8.
+
+## Amendment 1 (6 November 2026, before any data for this family was downloaded or inspected)
+
+The point-in-time NIFTY 100 precondition is replaced. Reconstructing it needs
+roughly 250+ niftyindices notices (20-30 a year since 2014: semi-annual
+reviews plus ad hoc replacements), each a multi-index PDF; too error-prone to
+do by hand. Replacement universe, computed only from data available at D:
+
+| Component | Rule |
+|---|---|
+| Candidates | Every plain NSE equity symbol (no series suffix) in Kite's instrument list of 2026-11-05 with Kite daily history. |
+| Universe at D | The 100 candidates with the highest median daily traded value (close x volume) over the 126 sessions ending D, among those with 253 consecutive valid bars through D. Ties by symbol. |
+| Everything else | Unchanged (M12, M12V, monthly top 5, exits, entries, costs, evaluation). The random baseline draws from the same point-in-time universe. |
+
+Known residual bias: companies delisted or merged before 2026-11-05 are not
+in Kite's list and cannot enter the universe (for example HDFC Ltd, merged
+2023; DHFL, delisted 2021). The result must name this limit. The earlier
+">10% missing member-months makes CAN'T TELL" rule cannot be computed without
+true membership and is dropped; the verdict states the bias instead.
