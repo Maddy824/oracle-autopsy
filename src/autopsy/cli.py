@@ -29,7 +29,7 @@ from autopsy.data.synthetic import synthetic_intraday
 from autopsy.data.upstox import DEFAULT_TOKEN_PATH, TokenMissing, UpstoxClient, UpstoxError
 from autopsy.engine import run_backtest
 from autopsy.news.events import EventLedger, with_events
-from autopsy.news.nse_filings import load_nse_announcements, load_nse_deals
+from autopsy.news.nse_filings import load_nse_announcements, load_nse_deals, load_nse_financial_results
 from autopsy.report import render_report
 from autopsy.research.lock import Lock, hash_prices
 from autopsy.research.trials import TrialLog, _digest, _line_hash, _read
@@ -196,13 +196,22 @@ def _kite_login(args):
 
 
 def _events(args):
-    events = (load_nse_announcements(args.csv) if args.kind == 'announcements'
-              else load_nse_deals(args.csv, kind=args.kind))
-    log = EventLedger()
-    for event in events:
-        log.add(event)
+    report = None
+    if args.kind == 'financial_results':
+        events, report = load_nse_financial_results(args.csv)
+    elif args.kind == 'announcements':
+        events = load_nse_announcements(args.csv)
+    else:
+        events = load_nse_deals(args.csv, kind=args.kind)
+    added = EventLedger().add_many(events)
     _archive(args.csv, 'nse/events')
-    print(f'Imported {len(events)} event rows; the ledger deduplicates repeated documents.')
+    print(f'Imported {len(events)} event rows ({added} new); the ledger deduplicates repeated documents.')
+    if report is not None:
+        print(f"Results: {report['rows']} rows -> {report['events']} symbol-quarter events; "
+              f"{report['without_time']} without a usable publication time.")
+        if report['unmapped_companies']:
+            print(f"Skipped {len(report['unmapped_companies'])} companies with no unique symbol: "
+                  + ', '.join(report['unmapped_companies'][:20]))
     return 0
 
 
@@ -555,7 +564,7 @@ def _parser():
     fetch_kite.add_argument('--session', default=DEFAULT_SESSION_PATH)
     events = commands.add_parser('events').add_subparsers(dest='events_command', required=True).add_parser('import')
     events.add_argument('csv', nargs='+')
-    events.add_argument('--kind', choices=['announcements', 'bulk_deal', 'block_deal'], default='announcements')
+    events.add_argument('--kind', choices=['announcements', 'financial_results', 'bulk_deal', 'block_deal'], default='announcements')
     research = commands.add_parser('research').add_subparsers(dest='research_command', required=True).add_parser('run')
     research.add_argument('--mode', choices=['intraday', 'swing'], required=True)
     research.add_argument('--strategy', choices=list(REGISTRY), help='research only this registered strategy family')

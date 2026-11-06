@@ -273,3 +273,18 @@ def test_missing_event_time_reaches_locked_verdict_with_price_coverage_intact(tm
     assert checks["event_data"].verdict == "CAN'T TELL"
     assert result.verdict == "NO-GO"
     assert "missing dissemination time" in result.reasons
+
+
+def test_add_many_matches_add_and_keeps_chain(tmp_path):
+    from autopsy.news.events import EventLedger
+    from autopsy.news.nse_filings import load_nse_financial_results
+    path = tmp_path / "r.csv"
+    path.write_text('SYMBOL,COMPANY NAME,QUARTER END DATE,EXCHANGE DISSEMINATION TIME\n'
+                    'AAA,A Ltd,30-SEP-2025,05-Nov-2025 15:00:20\n'
+                    'BBB,B Ltd,30-SEP-2025,06-Nov-2025 16:00:00\n', encoding="utf-8")
+    events, _ = load_nse_financial_results([path], first_seen_at=pd.Timestamp("2026-11-06", tz="Asia/Kolkata"))
+    one, many = EventLedger(tmp_path / "one.jsonl"), EventLedger(tmp_path / "many.jsonl")
+    assert one.add(events[0]) is True
+    assert one.add_many(events) == 1 and one.add_many(events) == 0
+    assert many.add_many(events) == 2
+    assert [e.dedup_key for e in one.events()] == [e.dedup_key for e in many.events()]
