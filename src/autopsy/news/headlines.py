@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ElementTree
+from xml.parsers import expat
 
 import httpx
 import pandas as pd
@@ -27,12 +28,19 @@ class HeadlineError(RuntimeError):
 def parse_feed(content, *, source="Economic Times"):
     if not isinstance(content, bytes) or len(content) > MAX_BYTES:
         raise HeadlineError("feed too large or not bytes")
-    # Refuse DTDs and entities outright: an RSS feed never needs them.
-    if b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
-        raise HeadlineError("feed declares a DTD")
+    # Refuse DTDs and entities outright (an RSS feed never needs them). expat,
+    # the parser ElementTree uses, checks this in the document's own encoding,
+    # so no byte-level trick (e.g. UTF-16) can differ between check and parse.
+    def refuse(*_):
+        raise HeadlineError("feed declares a DTD or entity")
+
+    guard = expat.ParserCreate()
+    guard.StartDoctypeDeclHandler = refuse
+    guard.EntityDeclHandler = refuse
     try:
+        guard.Parse(content, True)
         root = ElementTree.fromstring(content)
-    except ElementTree.ParseError:
+    except (expat.ExpatError, ElementTree.ParseError):
         raise HeadlineError("feed is not valid XML") from None
     items = []
     for item in root.iter("item"):
@@ -50,14 +58,22 @@ def parse_feed(content, *, source="Economic Times"):
 
 
 def fetch_feed(url=ET_MARKETS, *, transport=None):
+    body = bytearray()
     try:
         with httpx.Client(transport=transport, timeout=20., follow_redirects=False) as client:
-            response = client.get(url, headers={"User-Agent": "oracle-autopsy personal brief"})
+            with client.stream("GET", url, headers={"User-Agent": "oracle-autopsy personal brief"}) as response:
+                if response.status_code != 200:
+                    raise HeadlineError(f"feed unavailable (HTTP {response.status_code})")
+                declared = response.headers.get("content-length", "")
+                if declared.isdigit() and int(declared) > MAX_BYTES:
+                    raise HeadlineError("feed too large")
+                for chunk in response.iter_bytes():
+                    body += chunk
+                    if len(body) > MAX_BYTES:
+                        raise HeadlineError("feed too large")
     except httpx.HTTPError:
         raise HeadlineError("feed unavailable") from None
-    if response.status_code != 200:
-        raise HeadlineError(f"feed unavailable (HTTP {response.status_code})")
-    return parse_feed(response.content)
+    return parse_feed(bytes(body))
 
 
 class HeadlineArchive:
