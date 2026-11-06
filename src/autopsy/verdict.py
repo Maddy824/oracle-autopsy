@@ -129,7 +129,7 @@ def decide(pick, locked_record, checks, lock):
         return _finish(checks, stats)
     if strategy.data_check is not None:
         checks.append(strategy.data_check(record.prices))
-    full_portfolio = pick.strategy in ("earnings_reaction", "weekly_loser_reversal")
+    full_portfolio = pick.strategy in ("earnings_reaction", "weekly_loser_reversal", "monthly_momentum")
     portfolio_check = CheckResult("random_portfolio", "CAN'T TELL", {
         "reason": "Full-portfolio random comparison has not completed." if full_portfolio else
                   "Legacy random sampler does not enforce cash, five-position limits, sizing or managed stops."})
@@ -141,6 +141,13 @@ def decide(pick, locked_record, checks, lock):
         stats["random_entry_matching"] = (
             "full portfolio: signal dates and order counts, uniform history-eligible symbols without loser filter, "
             "random priority, own ATR20, shared engine")
+    if pick.strategy == "monthly_momentum":
+        from autopsy.strategies import monthly_momentum
+        stats["random_entry_matching"] = (
+            "full portfolio: same rebalance dates and submitted replacement counts; uniform point-in-time "
+            "universe excluding held names; random exits and entry priority; shared engine")
+        stats["survivorship_bias"] = monthly_momentum.BIAS
+        stats["nifty50_buy_and_hold"] = monthly_momentum.benchmark(record.prices, lock.locked_start, lock.locked_end)
     feature_fn = lambda prices: strategy.features(prices, pick.params)
     names = {check.name for check in checks}
     if "lookahead" not in names:
@@ -170,7 +177,7 @@ def decide(pick, locked_record, checks, lock):
                               {"lower": stats["bootstrap_lower"], "alpha": .05}))
     try:
         if full_portfolio:
-            family = {"family": pick.strategy} if pick.strategy == "weekly_loser_reversal" else {}
+            family = {"family": pick.strategy} if pick.strategy != "earnings_reaction" else {}
             baseline = random_portfolio_baseline(record, pick.params, runs=1000, seed=0, **family)
             checks[checks.index(portfolio_check)] = CheckResult("random_portfolio", "PASS", {
                 "method": "full_engine", "runs": 1000, "seed": 0,

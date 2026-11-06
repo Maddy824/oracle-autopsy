@@ -25,7 +25,9 @@ def hash_prices(prices):
                     "events": prices.attrs.get("events"),
                     "bar_interval": prices.attrs.get("bar_interval"),
                     "index_symbol": prices.attrs.get("index_symbol"),
-                    "index_prices": prices.attrs.get("index_prices")})
+                    "index_prices": prices.attrs.get("index_prices"),
+                    **{key: prices.attrs[key] for key in ("monthly_warmup", "monthly_candidates", "monthly_index_opens")
+                       if key in prices.attrs}})
 
 
 class Lock:

@@ -9,7 +9,7 @@ import pandas as pd
 
 from autopsy.calendar import _intraday_closes
 from autopsy.costs import RateTable, trade_costs
-from autopsy.engine import Signal, _prepare_prices, _run_prepared
+from autopsy.engine import Signal, _prepare_prices, _prepare_rebalances, _run_prepared
 from autopsy.types import RunRecord, _validated_prices
 
 
@@ -341,6 +341,54 @@ class _EarningsPortfolio(_ManagedPortfolio):
     """Compatibility name for the unchanged earnings-family sampler."""
 
 
+class _MonthlyPortfolio:
+    """Same rebalance requests, with choices made against actual held positions.
+
+    Replacements count submitted sells/buys, before execution rejections. Cash,
+    prices or missing bars may reject a request in either portfolio. If a null
+    cannot submit the exact counts, comparison is unavailable, never relaxed.
+    """
+
+    def __init__(self, record, params):
+        from autopsy.strategies import monthly_momentum as momentum
+
+        config = record.reported_equity.attrs.get("autopsy_execution")
+        if not isinstance(config, dict) or not {"mode", "slippage_bps", "rates"} <= config.keys():
+            raise ValueError("record needs autopsy_execution metadata from run_backtest")
+        if config["mode"] != "swing":
+            raise ValueError("monthly portfolio requires swing execution")
+        check = momentum.data_check(record.prices)
+        if check.verdict != "PASS":
+            raise ValueError(check.evidence["reason"])
+        self.capital, self.slippage = record.start_cash, config["slippage_bps"]
+        self.rates = RateTable(**config["rates"])
+        features = momentum.features(record.prices, params)
+        self.strategy_signals = momentum.signals(record.prices, features, params)
+        self.prepared = _prepare_rebalances(record.prices, self.strategy_signals)
+        fills, equity = self.run(self.strategy_signals)
+        if fills != record.fills or not equity.equals(record.reported_equity):
+            raise ValueError("monthly_momentum portfolio replay does not match strategy record")
+        self.counts = {pd.Timestamp(row["time"]): (row["sells"], row["buys"])
+                       for row in equity.attrs.get("autopsy_replacements", [])}
+
+    def draw(self, rng):
+        def choose(rebalance, held):
+            sells, buys = self.counts[rebalance.time]
+            pool = sorted(set(rebalance.universe) - set(held))
+            if sells > len(held) or buys > len(pool):
+                raise ValueError("random portfolio cannot match exact rebalance replacement counts")
+            exits = rng.choice(sorted(held), size=sells, replace=False).tolist()
+            entries = rng.choice(pool, size=buys, replace=False).tolist()
+            return exits, entries
+        return choose
+
+    def run(self, choices):
+        selector = choices if callable(choices) else None
+        return _run_prepared(self.prepared, self.strategy_signals if selector else choices,
+                             "swing", self.capital, slippage_bps=self.slippage,
+                             rates=self.rates, target_selector=selector)
+
+
 def random_portfolio_baseline(record, params, runs=1000, seed=0, *, family="earnings_reaction") -> np.ndarray:
     """Managed-family full-engine null: final marked equity minus start cash.
 
@@ -350,7 +398,8 @@ def random_portfolio_baseline(record, params, runs=1000, seed=0, *, family="earn
     need not complete 30 trades. The verdict checks the strategy's trade count.
     """
     _positive_integer(runs, "runs")
-    portfolio = _ManagedPortfolio(record, params, family)
+    portfolio = (_MonthlyPortfolio(record, params) if family == "monthly_momentum"
+                 else _ManagedPortfolio(record, params, family))
     rng = np.random.default_rng(seed)
     result = np.empty(runs)
     for i in range(runs):

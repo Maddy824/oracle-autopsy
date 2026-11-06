@@ -18,7 +18,7 @@ GRIDS = {"intraday": (10, 25, 50), "swing": (5, 10, 25)}
 
 def slippage_grid_for(strategy):
     """Managed daily families pre-register a fixed 10 bps base."""
-    return (10,) if strategy.name in ("earnings_reaction", "weekly_loser_reversal") else GRIDS[strategy.mode]
+    return (10,) if strategy.name in ("earnings_reaction", "weekly_loser_reversal", "monthly_momentum") else GRIDS[strategy.mode]
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,7 @@ class FoldResult:
     verdict: str
     trial_log_path: str
     folds: int
+    nifty50_buy_and_hold: dict | None = None
 
     @property
     def slippage_bps(self):
@@ -78,10 +79,15 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
     dev = prices.loc[prices.index < dev_end].copy()
     # Event evidence and the independent schedule must survive window slicing.
     dev.attrs = {key: value for key, value in prices.attrs.items()
-                 if key in {"events", "expected_bars", "bar_interval", "index_symbol", "index_prices"}}
+                 if key in {"events", "expected_bars", "bar_interval", "index_symbol", "index_prices",
+                            "monthly_candidates", "monthly_warmup", "monthly_index_opens"}}
     if dev.empty or not dev.index.is_monotonic_increasing:
         raise ValueError("ordered development bars required")
     days = dev.index.normalize().unique()
+    monthly = strategy.name == "monthly_momentum"
+    if monthly:
+        from autopsy.strategies import monthly_momentum
+        days = days[days >= pd.Timestamp("2015-01-01", tz="Asia/Kolkata")]
     if len(days) < folds:
         raise ValueError("not enough development sessions")
     groups = np.array_split(np.arange(len(days)), folds)
@@ -108,7 +114,10 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
                 features = strategy.features(history, params)
                 signals = [signal for signal in strategy.signals(history, features, params)
                            if start <= signal.time < end]
-                record = run_backtest(history.loc[history.index >= start], signals, strategy.mode,
+                window_prices = history.loc[history.index >= start]
+                if monthly:
+                    window_prices = monthly_momentum.with_warmup(window_prices, history)
+                record = run_backtest(window_prices, signals, strategy.mode,
                                       slippage_bps=2 * base, rates=rates)
                 try:
                     pnl = daily_net_pnl(record)
@@ -118,9 +127,11 @@ def walk_forward(strategy, prices, dev_end, folds=4, *, trial_log=None, slippage
                     score, profit, status = None, None, "CAN'T TELL"
                 if data_check is not None and data_check.verdict != "PASS":
                     score, profit, status = None, None, data_check.verdict
+                benchmark = monthly_momentum.benchmark(history, start, end) if monthly else None
                 results.append(FoldResult(strategy.name, strategy.mode, params.copy(), base, fold,
-                                          start, end, score, profit, status, str(log.path.resolve()), folds))
+                                          start, end, score, profit, status, str(log.path.resolve()), folds, benchmark))
                 metrics.append({"fold": fold, "net_sharpe": score, "net_profit": profit, "verdict": status,
+                                **({"nifty50_buy_and_hold": benchmark} if monthly else {}),
                                 **({"data_check": data_check.evidence} if data_check else {})})
             log.append(strategy.name, params, window, {"status": "complete", "attempt": attempt_head,
                                                        "base_slippage_bps": base, "folds": metrics})

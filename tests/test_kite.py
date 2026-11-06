@@ -547,3 +547,25 @@ def test_all_zero_price_rows_are_dropped_but_partial_zeros_fail(files):
     bad = [['2025-01-02T00:00:00+0530', 101, 103, 100, 0, 30]]
     with pytest.raises(KiteError):
         fetch(client_for(files, _daily(bad)), interval='day', start='2025-01-02', end='2025-01-02')
+
+
+def test_fetch_kite_names_bad_symbol_or_skips_it(files, tmp_path, monkeypatch, capsys):
+    import autopsy.cli as cli
+    from autopsy.data.kite import KiteClient as Real
+    original = Real.candles
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path / 'data'))
+    symbols = tmp_path / 'symbols.txt'
+    symbols.write_text('NSE:RELIANCE\nNSE:NIFTY 50\n')
+
+    def candles(self, symbol, *args):
+        if symbol == 'NSE:NIFTY 50':
+            raise KiteError('Invalid Kite candles; conflicting daily bars on one date')
+        return original(self, symbol, *args)
+
+    monkeypatch.setattr(cli, 'KiteClient', lambda **kw: client_for(files))
+    monkeypatch.setattr(Real, 'candles', candles)
+    base = ['data', 'fetch-kite', '--symbols', str(symbols), '--from', '2025-01-01', '--to', '2025-01-01']
+    assert cli.main(base) == 2
+    assert '(NSE:NIFTY 50)' in capsys.readouterr().err
+    assert cli.main(base + ['--skip-invalid']) == 0
+    assert 'Skipped 1 symbol(s) with invalid Kite data: NSE:NIFTY 50' in capsys.readouterr().out

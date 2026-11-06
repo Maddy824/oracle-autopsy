@@ -128,8 +128,25 @@ def _data(args):
                 raise SetupError(f'Unknown or invalid Kite symbol: {symbol!r} (use EXCHANGE:TRADINGSYMBOL, e.g. NSE:RELIANCE)') from None
         yesterday = (pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timedelta(days=1)).date()
         end = min(pd.Timestamp(args.end).date(), yesterday).isoformat()
-        prices = combine_prices([client.candles(symbol, args.interval, args.start, end) for symbol in symbols])
-        _save_inputs(prices, 'Zerodha Kite Connect historical candles')
+        frames, skipped = [], {}
+        for symbol in symbols:
+            try:
+                frames.append(client.candles(symbol, args.interval, args.start, end))
+            except KiteSessionMissing:
+                raise
+            except KiteError as exc:
+                if not args.skip_invalid:
+                    raise KiteError(f'{exc} ({symbol})') from None
+                skipped[symbol] = str(exc)
+                print(f'Skipped {symbol}: {exc}', file=sys.stderr, flush=True)
+        if not frames:
+            raise SetupError('No Kite symbol returned valid candles.')
+        prices = combine_prices(frames)
+        source = 'Zerodha Kite Connect historical candles'
+        if skipped:
+            source += f'; skipped invalid: {", ".join(sorted(skipped))}'
+            print(f'Skipped {len(skipped)} symbol(s) with invalid Kite data: {", ".join(sorted(skipped))}')
+        _save_inputs(prices, source)
     else:
         # Keep token validation first, including the Task 9 monkeypatch point.
         client = UpstoxClient(token_path=args.token_path)
@@ -244,15 +261,30 @@ def _research(args):
         from autopsy.strategies.earnings_reaction import attach_index
         if args.index_symbol not in set(prices.symbol):
             raise SetupError('Index symbol must be present in imported prices.')
+        if args.strategy == 'monthly_momentum':
+            index_rows = prices.loc[prices.symbol == args.index_symbol]
+            prices.attrs['monthly_index_opens'] = json.dumps(
+                [[time.isoformat(), float(value)] for time, value in index_rows.open.items()])
         prices = attach_index(prices, args.index_symbol)
-    elif args.strategy in ('earnings_reaction', 'weekly_loser_reversal'):
+    elif args.strategy in ('earnings_reaction', 'weekly_loser_reversal', 'monthly_momentum'):
         raise SetupError(f'{args.strategy} requires --index-symbol and daily Nifty prices.')
+    if args.strategy == 'monthly_momentum':
+        from autopsy.strategies import monthly_momentum
+        if args.candidate_instruments:
+            prices = monthly_momentum.attach_candidates(prices, pd.read_csv(args.candidate_instruments, keep_default_na=False))
+        elif 'monthly_candidates' not in prices.attrs:
+            raise SetupError('monthly_momentum requires --candidate-instruments: the frozen 2026-11-05 Kite CSV for Amendment 1a.')
+        print(monthly_momentum.BIAS, file=sys.stderr)
     if args.benchmark_symbol:
         prices = _subset(prices, prices.symbol != args.benchmark_symbol)
     if prices.empty:
         raise SetupError('At least one trading symbol must remain after index/benchmark exclusions.')
     end = prices.index.max().normalize() + pd.Timedelta(days=1)
     start = end - pd.DateOffset(months=12)
+    if args.strategy == 'monthly_momentum':
+        start = pd.Timestamp('2025-11-06', tz='Asia/Kolkata')
+        end = pd.Timestamp('2026-11-06', tz='Asia/Kolkata')
+        prices = prices.loc[prices.index < end]
     dev = prices.loc[prices.index < start]
     if dev.empty or len(dev.index.normalize().unique()) < 4:
         raise SetupError('Need development sessions before the locked final 12 months.')
@@ -265,6 +297,11 @@ def _research(args):
     results = []
     for strategy in REGISTRY.values():
         if strategy.mode != args.mode or (args.strategy and strategy.name != args.strategy):
+            continue
+        if strategy.name == 'monthly_momentum' and args.strategy != 'monthly_momentum':
+            # Its frozen dates and Amendment 1a input need an explicit family run.
+            print('monthly_momentum: run explicitly with --strategy monthly_momentum, --index-symbol '
+                  'and --candidate-instruments for its pre-registered window.', file=sys.stderr)
             continue
         print(f'Research: {strategy.name}', file=sys.stderr, flush=True)
         check = strategy.data_check(dev) if strategy.data_check else None
@@ -280,7 +317,13 @@ def _research(args):
                                 'verdict': check.verdict, 'data_check': check.evidence})
             print(f"{strategy.name}: CAN'T TELL: {check.evidence.get('reason', 'data unavailable')}", file=sys.stderr)
             continue
-        results.extend(walk_forward(strategy, prices, start, trial_log=log))
+        family_results = walk_forward(strategy, prices, start, trial_log=log)
+        results.extend(family_results)
+        if strategy.name == 'monthly_momentum':
+            for row in family_results:
+                if row.nifty50_buy_and_hold is not None:
+                    print(f'Nifty 50 buy-and-hold / fold {row.fold + 1}: '
+                          f'{json.dumps(row.nifty50_buy_and_hold)} (context only)')
     try:
         if not results:
             raise MinTradesError('no usable development folds')
@@ -300,10 +343,10 @@ def _research(args):
         _save(state)
         print("Selection: CAN'T TELL. No candidate has 30 completed trades in every development fold. NO-GO.")
         return 0
-    if pick.strategy == 'weekly_loser_reversal' and not pick.median_fold_net_sharpe > 0:
+    if pick.strategy in ('weekly_loser_reversal', 'monthly_momentum') and not pick.median_fold_net_sharpe > 0:
         state.setdefault('selections', {}).pop(args.mode, None)
         _save(state)
-        print('weekly_loser_reversal: NO-GO. Development median Sharpe is not positive; holdout stays sealed.')
+        print(f'{pick.strategy}: NO-GO. Development median Sharpe is not positive; holdout stays sealed.')
         return 0
     # Freeze event evidence with prices; later imports cannot rewrite selection.
     snapshot = save_snapshot(prices, prices.attrs.get('price_basis', 'raw'), state['source'] + '; research input')
@@ -345,7 +388,11 @@ def _create_lock():
                 or selection['development_hash'] != hash_prices(prices.loc[prices.index < pd.Timestamp(start)])
                 or not any(_line_hash(row) == selection['trial_head'] for row in log.rows())):
             raise SetupError('Selection provenance changed. Run development research again.')
-        locked_frames.append(prices.loc[(prices.index >= pd.Timestamp(start)) & (prices.index < pd.Timestamp(end))])
+        locked_prices = prices.loc[(prices.index >= pd.Timestamp(start)) & (prices.index < pd.Timestamp(end))]
+        if selection['pick']['strategy'] == 'monthly_momentum':
+            from autopsy.strategies.monthly_momentum import with_warmup
+            locked_prices = with_warmup(locked_prices, prices.loc[prices.index < pd.Timestamp(start)])
+        locked_frames.append(locked_prices)
         picks.append(Pick(**selection['pick']))
     hashes = {hash_prices(frame) for frame in locked_frames}
     if len(hashes) != 1 or locked_frames[0].empty:
@@ -604,6 +651,7 @@ def _parser():
     fetch_kite.add_argument('--from', dest='start', required=True)
     fetch_kite.add_argument('--to', dest='end', default=(pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timedelta(days=1)).date().isoformat())
     fetch_kite.add_argument('--interval', default='5minute')
+    fetch_kite.add_argument('--skip-invalid', action='store_true', help='leave out symbols whose Kite data fails validation and list them')
     fetch_kite.add_argument('--credentials', default=DEFAULT_CREDENTIALS_PATH)
     fetch_kite.add_argument('--session', default=DEFAULT_SESSION_PATH)
     events = commands.add_parser('events').add_subparsers(dest='events_command', required=True).add_parser('import')
@@ -613,6 +661,7 @@ def _parser():
     research.add_argument('--mode', choices=['intraday', 'swing'], required=True)
     research.add_argument('--strategy', choices=list(REGISTRY), help='research only this registered strategy family')
     research.add_argument('--index-symbol', help='daily Nifty context symbol; excluded from trades and random universes')
+    research.add_argument('--candidate-instruments', help='frozen 2026-11-05 Kite instrument CSV for monthly momentum Amendment 1a')
     research.add_argument('--benchmark-symbol', help='identify the Nifty 50 ETF symbol in imported data; excludes it from strategy trades')
     commands.add_parser('lock').add_subparsers(dest='lock_command', required=True).add_parser('create')
     commands.add_parser('holdout').add_subparsers(dest='holdout_command', required=True).add_parser('open')
