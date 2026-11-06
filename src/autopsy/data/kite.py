@@ -310,6 +310,36 @@ class KiteClient:
                 temp.unlink(missing_ok=True)
         return frame
 
+    def quotes(self, symbols):
+        """Read-only full market quotes for up to 500 EXCHANGE:SYMBOL names.
+
+        Returns {symbol: {"last_price", "prev_close", "last_trade_time"}} for the
+        symbols Kite knows; unknown symbols are simply absent. last_trade_time is
+        aware IST or None (indices may omit it).
+        """
+        symbols = list(dict.fromkeys(symbols))
+        if not 0 < len(symbols) <= 500 or not all(
+                isinstance(s, str) and re.fullmatch(r"[A-Z]+:[^:\r\n]+", s) for s in symbols):
+            raise ValueError("quotes need 1-500 EXCHANGE:TRADINGSYMBOL names")
+        data = self._request("/quote", params=[("i", s) for s in symbols]).get("data")
+        if not isinstance(data, dict):
+            raise KiteError("Invalid Kite quote response")
+        result = {}
+        try:
+            for symbol, row in data.items():
+                if symbol not in symbols:
+                    continue
+                last, prev = float(row["last_price"]), float(row["ohlc"]["close"])
+                traded = row.get("last_trade_time") or row.get("timestamp")
+                when = pd.Timestamp(traded) if traded else None
+                if when is not None and when.tz is None:
+                    when = when.tz_localize("Asia/Kolkata")
+                result[symbol] = {"last_price": last, "prev_close": prev,
+                                  "last_trade_time": when.tz_convert("Asia/Kolkata") if when is not None else None}
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise KiteError("Invalid Kite quote response") from None
+        return result
+
     def resolve(self, symbol):
         if not isinstance(symbol, str) or not re.fullmatch(r"[A-Z]+:[^:\r\n]+", symbol):
             raise ValueError("symbol must be EXCHANGE:TRADINGSYMBOL")
