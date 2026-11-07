@@ -109,3 +109,20 @@ the strategy. For this family the check now covers only symbols that were in
 the point-in-time universe at some session of the locked window, the names
 the strategy could trade; the 2% threshold is unchanged. Decided from coverage
 counts only; no locked-window returns were computed or viewed.
+
+## Amendment 3 (7 November 2026, before the second opening)
+
+Opening #1 of the sealed year (lock created 7 November) failed while loading
+the locked price file: its Parquet metadata (results events 34 MB and warm-up
+prices 37 MB, stored twice by pandas) exceeded pyarrow's 100 MB read guard.
+The failure happened in `load_snapshot`, before any strategy code ran; it was
+reproduced without opening the lock, and no sealed-year result was computed
+or shown. The loader now raises the guard for hash-verified files (commit
+below). A dry run of features, signals and backtest on the locked file was
+then executed with all output suppressed except "ok".
+
+The lock journal correctly records two openings, so the tool's `lock` check
+will report FAIL and the tool verdict will be NO-GO. That record stays as it
+is. Interpretation fixed now, before the result: if every OTHER check passes,
+the family proceeds only to paper trading (no money), which is a fresh
+out-of-sample test in its own right; if any other check fails, it is rejected.

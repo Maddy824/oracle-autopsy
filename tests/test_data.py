@@ -212,3 +212,15 @@ def test_snapshot_keeps_schedule_outside_parquet_and_verifies_it(tmp_path, monke
     schedule.write_bytes(gzip.compress(b"[]"))
     with pytest.raises(ValueError, match="schedule hash mismatch"):
         load_snapshot(path)
+
+
+def test_snapshot_with_large_attrs_loads(tmp_path, monkeypatch):
+    from autopsy.data.schedule import with_schedule
+    from autopsy.data.store import load_snapshot, save_snapshot
+    monkeypatch.setenv("AUTOPSY_DATA_DIR", str(tmp_path))
+    idx = pd.DatetimeIndex(["2025-01-01"], tz="Asia/Kolkata")
+    prices = with_schedule(pd.DataFrame({"symbol": ["A"], "open": 10., "high": 11., "low": 9., "close": 10.,
+                                         "volume": 5.}, index=idx), "D")
+    prices.attrs["events"] = "x" * 60_000_000  # stored twice by pandas: past the 100 MB default
+    loaded, _ = load_snapshot(save_snapshot(prices, "adjusted", "test"))
+    assert len(loaded.attrs["events"]) == 60_000_000
