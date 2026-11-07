@@ -598,3 +598,15 @@ def test_fetch_kite_retries_network_errors_then_stops_never_skips(files, tmp_pat
     monkeypatch.setattr(Real, 'candles', down)
     assert cli.main(base) == 2
     assert 'rerun the same command to resume' in capsys.readouterr().err
+
+
+def test_fetch_kite_skips_symbols_missing_from_instruments(files, tmp_path, monkeypatch, capsys):
+    import autopsy.cli as cli
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path / 'data'))
+    symbols = tmp_path / 'symbols.txt'
+    symbols.write_text('NSE:RELIANCE\nNSE:GONE\n')
+    monkeypatch.setattr(cli, 'KiteClient', lambda **kw: client_for(files))
+    base = ['data', 'fetch-kite', '--symbols', str(symbols), '--from', '2025-01-01', '--to', '2025-01-01']
+    assert cli.main(base) == 2
+    assert cli.main(base + ['--skip-invalid']) == 0
+    assert "Skipped 1 symbol(s) not in today's Kite instrument list: NSE:GONE" in capsys.readouterr().out

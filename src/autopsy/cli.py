@@ -122,11 +122,17 @@ def _data(args):
         if not symbols:
             raise SetupError('The Kite symbols file lists no symbols.')
         # Check the whole list before a long download; name the bad line.
+        unknown = []
         for symbol in symbols:
             try:
                 client.resolve(symbol)
             except ValueError:
-                raise SetupError(f'Unknown or invalid Kite symbol: {symbol!r} (use EXCHANGE:TRADINGSYMBOL, e.g. NSE:RELIANCE)') from None
+                if not args.skip_invalid:
+                    raise SetupError(f'Unknown or invalid Kite symbol: {symbol!r} (use EXCHANGE:TRADINGSYMBOL, e.g. NSE:RELIANCE)') from None
+                unknown.append(symbol)
+        if unknown:
+            print(f'Skipped {len(unknown)} symbol(s) not in today\'s Kite instrument list: {", ".join(unknown)}', flush=True)
+            symbols = [symbol for symbol in symbols if symbol not in unknown]
         yesterday = (pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timedelta(days=1)).date()
         end = min(pd.Timestamp(args.end).date(), yesterday).isoformat()
         frames, skipped = [], {}
@@ -152,6 +158,8 @@ def _data(args):
             raise SetupError('No Kite symbol returned valid candles.')
         prices = combine_prices(frames)
         source = 'Zerodha Kite Connect historical candles'
+        if unknown:
+            source += f'; not in Kite instrument list: {", ".join(unknown)}'
         if skipped:
             source += f'; skipped invalid: {", ".join(sorted(skipped))}'
             print(f'Skipped {len(skipped)} symbol(s) with invalid Kite data: {", ".join(sorted(skipped))}')
