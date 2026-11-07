@@ -569,3 +569,32 @@ def test_fetch_kite_names_bad_symbol_or_skips_it(files, tmp_path, monkeypatch, c
     assert '(NSE:NIFTY 50)' in capsys.readouterr().err
     assert cli.main(base + ['--skip-invalid']) == 0
     assert 'Skipped 1 symbol(s) with invalid Kite data: NSE:NIFTY 50' in capsys.readouterr().out
+
+
+def test_fetch_kite_retries_network_errors_then_stops_never_skips(files, tmp_path, monkeypatch, capsys):
+    import autopsy.cli as cli
+    from autopsy.data.kite import KiteClient as Real, KiteTransportError
+    original = Real.candles
+    monkeypatch.setenv('AUTOPSY_DATA_DIR', str(tmp_path / 'data'))
+    monkeypatch.setattr(cli.time_module, 'sleep', lambda seconds: None)
+    symbols = tmp_path / 'symbols.txt'
+    symbols.write_text('NSE:RELIANCE\n')
+    calls = []
+
+    def flaky(self, symbol, *args):
+        calls.append(symbol)
+        if len(calls) < 3:
+            raise KiteTransportError('Kite transport or response failure')
+        return original(self, symbol, *args)
+
+    monkeypatch.setattr(cli, 'KiteClient', lambda **kw: client_for(files))
+    monkeypatch.setattr(Real, 'candles', flaky)
+    base = ['data', 'fetch-kite', '--symbols', str(symbols), '--from', '2025-01-01', '--to', '2025-01-01', '--skip-invalid']
+    assert cli.main(base) == 0 and len(calls) == 3
+
+    def down(self, symbol, *args):
+        raise KiteTransportError('Kite transport or response failure')
+
+    monkeypatch.setattr(Real, 'candles', down)
+    assert cli.main(base) == 2
+    assert 'rerun the same command to resume' in capsys.readouterr().err

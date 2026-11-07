@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import time as time_module
 import webbrowser
 from uuid import uuid4
 
@@ -21,7 +22,7 @@ from autopsy.alerts.scorecard import random_entries, summarise, trades
 from autopsy.checks import CheckResult
 from autopsy.costs import load_rates
 from autopsy.data.kite import (DEFAULT_CREDENTIALS_PATH, DEFAULT_SESSION_PATH, KiteClient, KiteError,
-                               KiteCredentialsMissing, KiteSessionMissing, create_session, login_url, parse_request_token,
+                               KiteCredentialsMissing, KiteSessionMissing, KiteTransportError, create_session, login_url, parse_request_token,
                                read_credentials, read_session)
 from autopsy.data.kite_login import KiteLoginListener, wait_seconds
 from autopsy.data.nse import load_bhavcopy
@@ -131,9 +132,17 @@ def _data(args):
         frames, skipped = [], {}
         for symbol in symbols:
             try:
-                frames.append(client.candles(symbol, args.interval, args.start, end))
-            except KiteSessionMissing:
-                raise
+                for attempt in range(4):
+                    try:
+                        frames.append(client.candles(symbol, args.interval, args.start, end))
+                        break
+                    except KiteTransportError:
+                        if attempt == 3:
+                            raise
+                        time_module.sleep(5 * 3 ** attempt)
+            except (KiteSessionMissing, KiteTransportError) as exc:
+                # Progress is cached per request; rerunning resumes the download.
+                raise KiteError(f'{exc} ({symbol}); rerun the same command to resume') from None
             except KiteError as exc:
                 if not args.skip_invalid:
                     raise KiteError(f'{exc} ({symbol})') from None

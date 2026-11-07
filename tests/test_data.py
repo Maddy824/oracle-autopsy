@@ -191,3 +191,24 @@ def test_price_basis_survives_combining_and_snapshot(tmp_path, monkeypatch, basi
     b.attrs['price_basis'] = 'raw' if basis == 'adjusted' else 'adjusted'
     with pytest.raises(ValueError, match='raw and adjusted'):
         combine_prices([a, b])
+
+
+def test_snapshot_keeps_schedule_outside_parquet_and_verifies_it(tmp_path, monkeypatch):
+    import gzip
+    import json as _json
+    import pyarrow.parquet as pq
+    from autopsy.data.schedule import with_schedule
+    from autopsy.data.store import load_snapshot, save_snapshot
+    monkeypatch.setenv("AUTOPSY_DATA_DIR", str(tmp_path))
+    idx = pd.DatetimeIndex(["2025-01-01", "2025-01-02"], tz="Asia/Kolkata").repeat(2)
+    prices = pd.DataFrame({"symbol": ["A", "B"] * 2, "open": 10., "high": 11., "low": 9., "close": 10.,
+                           "volume": 5.}, index=idx)
+    prices = with_schedule(prices.drop(prices.index[3:]), "D")  # B missing on day 2
+    path = save_snapshot(prices, "adjusted", "test")
+    assert all(b"expected_bars" not in value for value in (pq.read_schema(path).metadata or {}).values())
+    loaded, _ = load_snapshot(path)
+    assert _json.loads(loaded.attrs["expected_bars"]) == _json.loads(prices.attrs["expected_bars"])
+    schedule = path.with_suffix(".schedule.json.gz")
+    schedule.write_bytes(gzip.compress(b"[]"))
+    with pytest.raises(ValueError, match="schedule hash mismatch"):
+        load_snapshot(path)
