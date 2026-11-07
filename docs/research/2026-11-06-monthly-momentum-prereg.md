@@ -126,3 +126,24 @@ will report FAIL and the tool verdict will be NO-GO. That record stays as it
 is. Interpretation fixed now, before the result: if every OTHER check passes,
 the family proceeds only to paper trading (no money), which is a fresh
 out-of-sample test in its own right; if any other check fails, it is rejected.
+
+## Sealed-year result (7 November 2026, opening #2, commit 834226d)
+
+Tool verdict: **NO-GO**. Checks: lock FAIL (opened 2 times, see Amendment 3);
+data PASS (142 universe members, 0% missing; unscoped 9.95%); costs, ledger,
+look-ahead, determinism PASS; trades **CAN'T TELL (23 completed, 30 needed)**,
+so the tool stopped before profit, bootstrap and random-portfolio checks.
+
+Read afterwards from the stored record, as context (holdout already spent):
+M12 turned ₹2,00,000 into ₹2,88,572 (+₹88,572, +44%), max drawdown −13%, versus
+Nifty 50 buy-and-hold −₹8,258 (−4%, before costs). The full-portfolio random
+baseline, run post hoc on the same record (1,000 runs, seed 0): random P&L
+5th/50th/95th percentiles −₹35,471 / −₹4,664 / +₹37,771; the strategy beat
+99.9%. Holdings concentrated in metals, power equipment and defence names
+(e.g. HINDCOPPER, NATIONALUM, GRSE, POWERINDIA, ADANIPOWER, BHEL).
+
+**Decision under Amendment 3:** no other check FAILED, but two are CAN'T TELL, so
+this is not a GO. The family proceeds to **paper trading only** (no money) to
+collect out-of-sample trades: monthly targets sent before each month-end
+rebalance and logged with actual next-day prices. Real money is not
+considered before at least 30 paper trades and a fresh review.
