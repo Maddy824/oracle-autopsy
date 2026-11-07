@@ -65,7 +65,10 @@ def load_snapshot(path):
     meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     if hashlib.sha256(path.read_bytes()).hexdigest() != meta["sha256"]:
         raise ValueError("snapshot hash mismatch")
-    frame = _validated_prices(pd.read_parquet(path, engine="pyarrow"))
+    # Bytes are hash-verified above, so our own large attrs (events, warm-up)
+    # may exceed pyarrow's default 100 MB metadata guard.
+    frame = _validated_prices(pd.read_parquet(path, engine="pyarrow", thrift_string_size_limit=2**31 - 1,
+                                              thrift_container_size_limit=2**31 - 1))
     if "schedule_sha256" in meta:
         payload = path.with_suffix(".schedule.json.gz").read_bytes()
         if hashlib.sha256(payload).hexdigest() != meta["schedule_sha256"]:
