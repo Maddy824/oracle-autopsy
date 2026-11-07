@@ -78,3 +78,34 @@ equity symbol" means Kite instruments with segment `NSE`, instrument_type
 (case-insensitive) or symbol ending `BEES|IETF|ETF|INAV`. On the 2026-11-05
 list this keeps 2,383 companies and drops 715 funds. History requested from
 2014-01-01 for the 253-session warm-up.
+
+## Development result (7 November 2026, commits 6f8af55..1da2429)
+
+Input: Kite adjusted daily candles 2014-01-01 to 2026-11-05 for 2,357 of the
+2,383 Amendment 1a candidates (gone from Kite's list: PRIORITY, VENUSREM, VIRAT,
+ATLANTAA, LEMERITE, ZEEMEDIA; conflicting daily bars: AHLADA, APOLSINHOT, BANG,
+BBTCL, BEARDSELL, CLEDUCATE, EIFFL, GANESHBE, INDOWIND, KAPSTON, KMSUGAR,
+PANSARI, RAJRATAN, SEJALLTD, SHANTI, SONAMLTD, TEMBO, TIL, VINEETLAB, WEWIN).
+
+Net profit ₹ (net Sharpe) per fold, fresh ₹2,00,000 each, 20 bps slippage:
+
+| Variant | 2015–17 | 2017–20 | 2020–23 | 2023–25 | Median Sharpe |
+|---|---|---|---|---|---|
+| M12 | −20,998 (−0.09) | −5,747 (0.07) | +69,728 (0.53) | +2,19,739 (1.02) | **0.30** |
+| M12V | −15,969 (−0.04) | −22,467 (−0.08) | +90,764 (0.64) | +2,28,969 (1.14) | 0.30 |
+| Nifty 50 buy-and-hold (context, before costs) | +45,458 | −5,378 | +1,75,994 | +84,964 | |
+
+Selected: **M12** (median fold Sharpe 0.2985 vs M12V 0.2987 rounds equal; the
+rule's tie-break picked M12). Positive, so the sealed year may be opened once.
+Caution recorded before opening: the strategy trailed buy-and-hold Nifty in
+three of four folds; its edge rests on 2020-25.
+
+## Amendment 2 (7 November 2026, before the sealed year was opened)
+
+The final data-coverage check compared the locked window against a grid of
+every candidate on every session: 9.9% of those pairs are missing (illiquid
+names, new listings), which would make the verdict CAN'T TELL regardless of
+the strategy. For this family the check now covers only symbols that were in
+the point-in-time universe at some session of the locked window, the names
+the strategy could trade; the 2% threshold is unchanged. Decided from coverage
+counts only; no locked-window returns were computed or viewed.
