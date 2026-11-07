@@ -160,3 +160,8 @@ def test_data_check_can_be_limited_to_tradable_symbols():
     assert _data_check(prices, lock).verdict == "CAN'T TELL"
     limited = _data_check(prices, lock, symbols={"A"})
     assert limited.verdict == "PASS" and limited.evidence["missing_fraction"] == 0
+    assert limited.evidence["unscoped_missing_fraction"] == 0.5
+    # A fabricated bar outside the scope still fails the check.
+    extra = pd.concat([prices, pd.DataFrame({"symbol": ["C"]}, index=idx[:1])])
+    extra.attrs = prices.attrs
+    assert _data_check(extra, lock, symbols={"A"}).verdict == "FAIL"
