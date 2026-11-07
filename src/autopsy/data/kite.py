@@ -70,6 +70,10 @@ class KiteError(RuntimeError):
     """Sanitized failure; never contains a response, header or credential."""
 
 
+class KiteTransportError(KiteError):
+    """Network or unreadable response: retry or stop, never treat as bad data."""
+
+
 class KiteCredentialsMissing(KiteError):
     def __init__(self):
         super().__init__("Kite credentials unavailable: save api_key and api_secret in the "
@@ -280,7 +284,7 @@ class KiteClient:
                         return response.content
                     return _payload(response)
         except (httpx.HTTPError, ValueError):
-            raise KiteError("Kite transport or response failure") from None
+            raise KiteTransportError("Kite transport or response failure") from None
 
     def instruments(self, exchange="NSE"):
         if not isinstance(exchange, str) or not re.fullmatch(r"[A-Z]+", exchange):
