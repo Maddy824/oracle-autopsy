@@ -37,19 +37,25 @@ def _data_check(prices, lock, *, max_missing=.02, symbols=None):
     try:
         if isinstance(schedule, str):
             schedule = json.loads(schedule)
-        if symbols is not None:
-            schedule = [pair for pair in schedule if pair[1] in symbols]
-        expected = {(pd.Timestamp(time), symbol) for time, symbol in schedule
-                    if lock.locked_start <= pd.Timestamp(time) < lock.locked_end}
-        actual = {pair for pair in zip(prices.index, prices.symbol) if symbols is None or pair[1] in symbols}
+        full = {(pd.Timestamp(time), symbol) for time, symbol in schedule
+                if lock.locked_start <= pd.Timestamp(time) < lock.locked_end}
+        actual = set(zip(prices.index, prices.symbol))
+        if not full:
+            raise ValueError("empty expected schedule")
+        # Scoping narrows only the missing-bar fraction; unexpected bars are
+        # always judged against the full locked schedule.
+        expected = full if symbols is None else {pair for pair in full if pair[1] in symbols}
         if not expected:
             raise ValueError("empty expected schedule")
         missing = len(expected - actual) / len(expected)
         status = "CAN'T TELL" if missing > max_missing else "PASS"
-        if actual - expected:
+        if actual - full:
             status = "FAIL"
-        return CheckResult("data", status, {"missing_fraction": missing,
-                                           "expected_bars": len(expected), "actual_bars": len(actual)})
+        evidence = {"missing_fraction": missing, "expected_bars": len(expected), "actual_bars": len(actual)}
+        if symbols is not None:
+            evidence.update(scope_symbols=len({symbol for _, symbol in expected}),
+                            unscoped_missing_fraction=len(full - actual) / len(full))
+        return CheckResult("data", status, evidence)
     except (ValueError, TypeError):
         return CheckResult("data", "CAN'T TELL", {"reason": "invalid expected bar schedule"})
 
