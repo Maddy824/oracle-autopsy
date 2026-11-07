@@ -147,3 +147,16 @@ def test_any_cant_tell_blocks_go(tmp_path, edge, case, monkeypatch):
     if case == "context_only":
         assert result.stats["dsr"] == 0.
         assert result.stats["beats_nifty_etf_sharpe"] is False
+
+
+def test_data_check_can_be_limited_to_tradable_symbols():
+    import json as _json
+    from types import SimpleNamespace
+    from autopsy.verdict import _data_check
+    idx = pd.DatetimeIndex(["2025-01-01", "2025-01-02"], tz="Asia/Kolkata")
+    prices = pd.DataFrame({"symbol": ["A", "A"]}, index=idx)
+    prices.attrs["expected_bars"] = _json.dumps([[t.isoformat(), s] for t in idx for s in ("A", "B")])
+    lock = SimpleNamespace(locked_start=idx[0], locked_end=idx[-1] + pd.Timedelta(days=1))
+    assert _data_check(prices, lock).verdict == "CAN'T TELL"
+    limited = _data_check(prices, lock, symbols={"A"})
+    assert limited.verdict == "PASS" and limited.evidence["missing_fraction"] == 0

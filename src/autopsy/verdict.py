@@ -29,16 +29,19 @@ class Verdict:
     stats: dict
 
 
-def _data_check(prices, lock, *, max_missing=.02):
+def _data_check(prices, lock, *, max_missing=.02, symbols=None):
+    """symbols, when given, limits coverage to the names the strategy could trade."""
     schedule = prices.attrs.get("expected_bars")
     if schedule is None:
         return CheckResult("data", "CAN'T TELL", {"reason": "expected bar schedule unavailable"})
     try:
         if isinstance(schedule, str):
             schedule = json.loads(schedule)
+        if symbols is not None:
+            schedule = [pair for pair in schedule if pair[1] in symbols]
         expected = {(pd.Timestamp(time), symbol) for time, symbol in schedule
                     if lock.locked_start <= pd.Timestamp(time) < lock.locked_end}
-        actual = set(zip(prices.index, prices.symbol))
+        actual = {pair for pair in zip(prices.index, prices.symbol) if symbols is None or pair[1] in symbols}
         if not expected:
             raise ValueError("empty expected schedule")
         missing = len(expected - actual) / len(expected)
@@ -118,7 +121,14 @@ def decide(pick, locked_record, checks, lock):
         checks.append(CheckResult("window", "FAIL", {"reason": "record includes bars or fills outside locked window"}))
         return _finish(checks, stats)
     # Exact session caps cannot be verified across missing scheduled bars.
-    checks.append(_data_check(record.prices, lock,
+    tradable = None
+    if pick.strategy == "monthly_momentum":
+        # Amendment 2: coverage is judged on names that were in the point-in-time
+        # universe during the locked window, not every listed candidate.
+        universe = REGISTRY[pick.strategy].features(record.prices, pick.params)
+        tradable = set(universe.loc[universe.universe.astype(bool), "symbol"])
+        stats["data_check_scope"] = f"{len(tradable)} point-in-time universe members in the locked window"
+    checks.append(_data_check(record.prices, lock, symbols=tradable,
                               max_missing=0 if pick.strategy == "weekly_loser_reversal" else .02))
     execution = _execution_check(pick, record)
     checks.append(execution)
