@@ -95,8 +95,8 @@ Net profit ₹ (net Sharpe) per fold, fresh ₹2,00,000 each, 20 bps slippage:
 | M12V | −15,969 (−0.04) | −22,467 (−0.08) | +90,764 (0.64) | +2,28,969 (1.14) | 0.30 |
 | Nifty 50 buy-and-hold (context, before costs) | +45,458 | −5,378 | +1,75,994 | +84,964 | |
 
-Selected: **M12** (median fold Sharpe 0.2985 vs M12V 0.2987 rounds equal; the
-rule's tie-break picked M12). Positive, so the sealed year may be opened once.
+Selected: **M12** (median fold Sharpe 0.2985 vs M12V 0.2980; effectively a
+tie, decided by the pre-registered rule). Positive, so the sealed year may be opened once.
 Caution recorded before opening: the strategy trailed buy-and-hold Nifty in
 three of four folds; its edge rests on 2020-25.
 
