@@ -476,3 +476,8 @@ adverse slippage, rather than its 15:15 closing price. This scheduled exit
 does not read that bar's close; signals execute strictly on a later bar, and
 entries at the cutoff are blocked. Short or incomplete sessions still use
 their last observed bar, so expected-schedule quality checks remain necessary.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Use it, change it for your own goals, share it.
+It comes with no warranty, and nothing here is investment advice.
