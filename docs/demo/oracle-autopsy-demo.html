@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<!-- Oracle Autopsy demo. Built with the Bang Motion skill (Bang Tutorial, MIT, https://github.com/bangtutorial/bang-motion)
+     and the finance-chart grammar of huashu-art-motion (alchaincyf, MIT, https://github.com/alchaincyf/huashu-art-motion).
+     Every figure comes from the repo's own reports. ?debug=1 shows a scrub bar; ?clean=1 holds autoplay for export. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Oracle Autopsy Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+:root{
+  --paper:#f3f2ed; --paper-2:#ebe8df; --ink:#1c2e38; --muted:#536570; --line:#c9d2d2;
+  --teal:#176d8c; --rust:#a13925; --green:#086355; --hl:#f2d675; --card:#fffdf8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#d9d6cc}
+body{font-family:"IBM Plex Mono",ui-monospace,monospace;color:var(--ink)}
+#filters{position:fixed;width:0;height:0}
+#stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%);
+  overflow:hidden;background:var(--paper)}
+#shake{position:absolute;inset:0}
+#world{position:absolute;left:0;top:0;width:3840px;height:2160px;transform-origin:0 0;will-change:transform;
+  background:
+    radial-gradient(900px 700px at 700px 500px, rgba(23,109,140,.07), transparent 70%),
+    radial-gradient(1000px 800px at 3100px 1700px, rgba(161,57,37,.06), transparent 70%),
+    radial-gradient(1100px 900px at 2900px 380px, rgba(8,99,85,.05), transparent 70%),
+    var(--paper)}
+.rules{position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(180deg,transparent 0 53px,rgba(23,109,140,.11) 53px 54px)}
+.margin{position:absolute;top:0;bottom:0;width:2px;background:rgba(161,57,37,.22)}
+svg.layer{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.t{position:absolute;white-space:nowrap}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:500;letter-spacing:-.015em;font-variation-settings:"opsz" 144}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.num{font-family:"IBM Plex Mono",monospace;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.lbl{font-size:36px;color:var(--muted)}
+.ax{font-size:30px;color:var(--muted)}
+.ch{display:inline-block;opacity:0;will-change:transform,opacity}
+.wd{display:inline-block;white-space:nowrap}
+/* page 1 turns away like a ledger leaf */
+#page1{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 50%;
+  background:var(--paper);backface-visibility:hidden;z-index:5}
+#p1shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(28,46,56,0),rgba(28,46,56,.35));opacity:0}
+#worldwrap{position:absolute;inset:0}
+/* verdict card */
+#card{position:absolute;left:860px;top:150px;width:930px;height:800px;background:var(--card);
+  border-radius:18px;box-shadow:0 30px 70px rgba(28,46,56,.14),0 2px 0 rgba(28,46,56,.05);opacity:0}
+.row{position:absolute;left:44px;right:44px;height:96px;border-top:1.5px solid var(--line);opacity:0}
+.row .nm{position:absolute;left:0;top:12px;font-size:38px;font-weight:500;color:var(--ink)}
+.row .rl{position:absolute;left:0;top:56px;font-size:30px;color:var(--muted);font-family:"Fraunces",serif;font-style:italic}
+.row .st{position:absolute;right:0;top:20px;height:56px;width:230px;border:2px dashed var(--line);border-radius:10px}
+.row .sv{position:absolute;right:0;top:20px;font-size:38px;font-weight:600;letter-spacing:.02em;opacity:0;text-align:right;white-space:nowrap}
+.row .nt{position:absolute;right:0;top:62px;font-size:30px;color:var(--muted);opacity:0;white-space:nowrap}
+.pass{color:var(--green)} .fail{color:var(--rust)} .tell{color:#8a6a12}
+#stamp{position:absolute;left:1010px;top:400px;padding:6px 46px 14px;border:12px solid var(--rust);border-radius:22px;
+  color:var(--rust);font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:190px;letter-spacing:.02em;line-height:1.1;
+  opacity:0;transform:rotate(-8deg);background:rgba(243,242,237,.78)}
+#hud{position:absolute;left:56px;bottom:40px;font-size:30px;color:var(--muted);font-family:"IBM Plex Mono",monospace;opacity:0;z-index:20}
+#grain{position:absolute;left:-96px;top:-96px;width:2112px;height:1272px;pointer-events:none;mix-blend-mode:multiply;opacity:.16;z-index:15}
+.vig{position:absolute;inset:0;pointer-events:none;z-index:14;
+  background:radial-gradient(ellipse 85% 75% at 50% 50%,transparent 55%,rgba(60,50,30,.16) 100%)}
+#ui{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;
+  padding:10px 16px;border-radius:14px;background:rgba(28,46,56,.92);color:#e4eeed;font:13px "IBM Plex Mono",monospace;z-index:50}
+#ui.on{display:flex} #ui button{background:#2d4552;color:#fff;border:0;padding:7px 14px;border-radius:8px;font:inherit;cursor:pointer}
+#scrub{width:360px} #clock{min-width:6ch;text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<svg id="filters"><defs>
+  <filter id="ink" x="-5%" y="-5%" width="110%" height="110%">
+    <feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="7"/>
+    <feDisplacementMap in="SourceGraphic" scale="3.2"/>
+  </filter>
+  <pattern id="hatch" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)">
+    <line x1="0" y1="0" x2="0" y2="16" stroke="#536570" stroke-width="3" opacity=".55"/>
+  </pattern>
+</defs></svg>
+
+<div id="stage">
+ <div id="shake">
+  <div id="worldwrap">
+  <div id="world">
+    <div class="rules" id="rules"></div>
+    <div class="margin" style="left:118px"></div>
+    <div class="margin" style="left:2038px"></div>
+
+    <!-- ===== PANEL A (0,0): verdict card ===== -->
+    <div class="t serif" id="a-t1" style="left:150px;top:330px;font-size:104px">So I built</div>
+    <div class="t serif" id="a-t2" style="left:150px;top:460px;font-size:104px">the autopsy</div>
+    <div class="t serif" id="a-t3" style="left:150px;top:330px;font-size:96px">Too few trades</div>
+    <div class="t serif" id="a-t4" style="left:150px;top:455px;font-size:96px">to tell</div>
+    <div id="card">
+      <div class="t mono lbl" id="card-h" style="left:44px;top:34px;font-size:32px;letter-spacing:.08em;opacity:0">VERDICT · MONTHLY MOMENTUM</div>
+    </div>
+    <div id="stamp">NO-GO</div>
+
+    <!-- ===== PANEL B (1920,0): real data ===== -->
+    <div class="t mono lbl" id="b-lab" style="left:2880px;top:700px;transform:translateX(-50%);font-size:40px;color:var(--ink)">8 strategies tested</div>
+    <div class="t mono lbl" id="b-lab2" style="left:2880px;top:700px;transform:translateX(-50%);font-size:40px;color:var(--ink)">1 reached the sealed year</div>
+    <div class="t mono lbl" id="m-lab" style="left:2160px;top:120px">Momentum · sealed final year</div>
+    <div class="t num" id="m-num" style="left:2152px;top:162px;font-size:150px;color:var(--green);opacity:0">+₹0</div>
+    <div class="t num" id="m-pct" style="left:2915px;top:218px;font-size:76px;color:var(--green);opacity:0">+44%</div>
+    <div class="t mono ax" id="nifty-lab" style="left:3580px;top:872px;transform:translateX(-100%);color:var(--muted);opacity:0">Nifty 50 −₹8,258</div>
+
+    <!-- ===== PANEL C (1920,1080): random portfolios ===== -->
+    <div class="t serif" id="c-cap" style="left:2880px;top:1250px;transform:translateX(-50%);font-size:100px">Beat <span id="c-hl" style="display:inline-block">99.9%</span> of random picks</div>
+    <div class="t mono lbl" id="c-band" style="left:2206px;top:1572px;font-size:32px;opacity:0">1,000 random portfolios · middle 90%</div>
+    <div class="t mono ax" id="c-med" style="left:2523px;top:1902px;transform:translateX(-50%);opacity:0">median −₹4,664</div>
+    <div class="t num" id="c-dotlab" style="left:2571px;top:1560px;transform:translateX(-50%);font-size:48px;color:var(--green);opacity:0">+₹88,572</div>
+
+    <!-- ===== PANEL D (0,1080): the decision ===== -->
+    <div class="t serif" id="d-t1" style="left:960px;top:1330px;transform:translateX(-50%);font-size:150px">Real money</div>
+    <div class="t serif" id="d-t2" style="left:960px;top:1560px;transform:translateX(-50%);font-size:132px;font-style:italic;color:var(--teal)">Paper trading only</div>
+    <div class="t serif" id="d-word" style="left:960px;top:1520px;transform:translateX(-50%);font-size:170px;font-weight:600">Oracle Autopsy</div>
+    <div class="t mono" id="d-url" style="left:960px;top:1745px;transform:translateX(-50%);font-size:40px;color:var(--muted)">MIT licence · github.com/Maddy824/oracle-autopsy</div>
+
+    <svg class="layer" id="wsvg" width="3840" height="2160" viewBox="0 0 3840 2160"></svg>
+
+    <!-- ===== PAGE 1 (sits over panel A, turns away) ===== -->
+    <div id="page1">
+      <div class="rules"></div>
+      <div class="margin" style="left:118px"></div>
+      <div class="t mono lbl" id="o-lab" style="left:240px;top:118px;font-size:40px">My old trading bot</div>
+      <div class="t num" id="o-num" style="left:232px;top:160px;font-size:170px;opacity:0">₹10,000</div>
+      <div class="t num" id="o-true" style="left:1215px;top:196px;font-size:110px;color:var(--ink);opacity:0">₹10,000</div>
+      <div class="t serif" id="o-cap" style="right:240px;top:560px;font-size:84px;text-align:right">On a market that never moved</div>
+      <div class="t serif" id="o-cap2" style="right:240px;top:540px;font-size:120px;font-style:italic;color:var(--rust)">Invented money</div>
+      <div class="t mono" id="o-call" style="left:440px;top:668px;font-size:40px;color:var(--rust);opacity:0">+₹10,000 from nowhere</div>
+      <div class="t mono ax" id="o-ref" style="left:900px;top:820px;opacity:0">independent ledger ₹10,000</div>
+      <svg class="layer" id="psvg" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+      <div id="p1shade"></div>
+    </div>
+  </div>
+  </div>
+ </div>
+ <svg id="grain" viewBox="0 0 2112 1272"><filter id="gf"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="11" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .2  0 0 0 0 .18  0 0 0 0 .14  0 0 0 .9 0"/></filter><rect width="2112" height="1272" filter="url(#gf)"/></svg>
+ <div class="vig"></div>
+ <div id="hud"></div>
+</div>
+
+<div id="ui"><button id="btn-play">Pause</button><button id="btn-restart">Restart</button>
+  <input id="scrub" type="range" min="0" max="1000" value="0"><span id="clock">0.00s</span></div>
+
+<script>
+/* ======================= DATA (from the repo's reports) ======================= */
+const ORACLE=[10000,10000,10000,10000,10000,10000,20000,20000,20000,20000,20000,20000,20000,20000,20000,20000,40000,40000,40000,40000,40000,40000,40000,40000,40000,40000,80000,80000,80000,80000,80000,80000,80000,80000,80000,80000,80000,80000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000,160000];      // daily reported equity, autopsy case oracle (flat ₹100 price)
+const MOMENTUM=[200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,200000,196060,194407,193191,193235,188939,190802,188633,189997,191265,190401,188856,186493,189262,192956,193534,193828,193569,193920,196248,198348,198232,199260,199221,200589,200832,194777,192739,194853,194539,197504,200405,195374,191209,190168,190698,185563,191458,198394,205635,202931,197004,199085,208102,204932,201829,208590,207265,205873,210327,204025,203232,199818,204882,203850,204953,203526,203849,207923,209081,205285,202829,198937,205864,207555,204287,206717,205177,205761,197278,195487,203213,201929,195916,186746,190636,194588,192188,189504,196944,197380,201220,201096,205669,208460,210275,211919,218447,229291,230810,227404,228152,229712,228795,226443,231666,235387,238599,238124,235952,239176,242917,246207,244326,238484,242654,246176,242447,242513,241568,245522,244605,244614,243790,246712,251198,253344,248907,251354,251724,253835,245667,234781,240170,235081,231727,241237,241920,243605,246862,248553,251972,253512,244228,239833,236563,235559,234878,229943,230458,233762,231940,224849,229968,232749,229884,233537,233776,228062,223772,220842,221807,222049,221475,221235,224877,224319,224186,222780,229520,232774,241905,249563,256097,252881,257541,262438,267948,264407,258950,264515,258809,264129,266536,263659,261027,264236,262340,268146,269783,267894,268262,266023,265014,264270,266886,268205,269303,268709,262576,259859,261611,264026,260184,263601,258765,258887,253346,256352,262741,261921,260539,271073,276800,273542,279173,283331,279267,278638,275066,275673,271206,267502,261112,253049,266152,274135,274205,278311,285450,288382,286069,288572];  // daily equity, sealed year 2025-11-06 .. 2026-11-05
+const NIFTY_PNL=-8258, P5=-35471, P50=-4664, P95=37771;
+
+/* ======================= UTIL ======================= */
+const $=(s,r=document)=>r.querySelector(s);
+const NS='http://www.w3.org/2000/svg';
+const W=1920,H=1080,WW=3840,WH=2160;
+const inr=(n,sign=false)=>{n=Math.round(n);const neg=n<0;let s=String(Math.abs(n));
+  if(s.length>3){const l=s.slice(-3);s=s.slice(0,-3).replace(/\B(?=(\d{2})+(?!\d))/g,',')+','+l;}
+  return (neg?'−':(sign?'+':''))+'₹'+s;};
+const hash=n=>{const x=Math.sin(n*12.9898)*43758.5453;return x-Math.floor(x);};
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);parent.appendChild(e);return e;}
+function pen(parent,d,{color='#1c2e38',w=4,ink=true}={}){
+  const p=el('path',{d,fill:'none',stroke:color,'stroke-width':w,'stroke-linecap':'round','stroke-linejoin':'round',pathLength:1},parent);
+  if(ink)p.setAttribute('filter','url(#ink)');
+  p.style.strokeDasharray='1 1'; p.style.strokeDashoffset=1; return p;}
+const defs=$('#filters defs');let fc=0;
+function makeBlur(){const id='mb'+(fc++);const f=document.createElementNS(NS,'filter');f.id=id;
+  f.setAttribute('x','-70%');f.setAttribute('y','-70%');f.setAttribute('width','240%');f.setAttribute('height','240%');
+  const g=document.createElementNS(NS,'feGaussianBlur');g.setAttribute('stdDeviation','0 0');f.appendChild(g);defs.appendChild(f);
+  return {url:`url(#${id})`,node:g};}
+function blurTween(tl,targets,at,from,to,dur,{ease='power3.out',ax=1,ay=.08}={}){const b=makeBlur(),o={v:from};
+  tl.set(targets,{filter:b.url},at);
+  tl.fromTo(o,{v:from},{v:to,duration:dur,ease,immediateRender:false,onUpdate(){b.node.setAttribute('stdDeviation',`${(o.v*ax).toFixed(2)} ${(o.v*ay).toFixed(2)}`);}},at);
+  tl.set(targets,{filter:'none'},at+dur);}
+const VERT={ax:.1,ay:1};
+function splitChars(e){const words=(e.textContent||'').split(' ');e.textContent='';const out=[];
+  words.forEach((w,i)=>{const wr=document.createElement('span');wr.className='wd';
+    for(const c of w){const s=document.createElement('span');s.className='ch';s.textContent=c;wr.appendChild(s);out.push(s);}
+    e.appendChild(wr);if(i<words.length-1){const sp=document.createElement('span');sp.className='ch';sp.innerHTML='&nbsp;';e.appendChild(sp);out.push(sp);}});
+  return out;}
+
+/* ======================= GEOMETRY ======================= */
+const psvg=$('#psvg'), wsvg=$('#wsvg');
+const OX0=240,OX1=1680, oy=v=>900-v/175000*560, ox=i=>OX0+i/(ORACLE.length-1)*(OX1-OX0);
+const MX0=2160,MX1=3600, my=v=>900-(v-180000)/120000*540, mx=i=>MX0+i/(MOMENTUM.length-1)*(MX1-MX0);
+const cx=v=>2160+(v+40000)/140000*1440, CY=1720;
+function polyD(xs,ys){let d='';for(let i=0;i<xs.length;i++)d+=(i?'L':'M')+xs[i].toFixed(1)+','+ys[i].toFixed(1);return d;}
+function gridLines(parent,x0,x1,ys){return ys.map(y=>pen(parent,`M${x0},${y} L${x1},${y}`,{color:'#9fb0b5',w:2,ink:false}));}
+function hlRect(parent){const r=el('rect',{x:0,y:0,width:0,height:10,fill:'#f2d675',opacity:.62},parent);
+  r.style.mixBlendMode='multiply';parent.insertBefore(r,parent.firstChild);return r;}
+
+// --- page 1 artwork
+const oHl=hlRect(psvg);
+const oGrid=gridLines(psvg,OX0,OX1,[oy(0),oy(50000),oy(100000),oy(150000)]);
+oGrid[0].setAttribute('stroke','#1c2e38');oGrid[0].setAttribute('stroke-width','3');
+const oAx=[[0,'₹0'],[50000,'₹50,000'],[100000,'₹1,00,000'],[150000,'₹1,50,000']].map(([v,s])=>{
+  const t=el('text',{x:OX0,y:v?oy(v)-12:oy(v)+36,'font-family':'IBM Plex Mono','font-size':30,fill:'#536570',opacity:0},psvg);t.textContent=s;return t;});
+const oClip=el('clipPath',{id:'oclip'},el('defs',{},psvg)); const oClipR=el('rect',{x:OX0-10,y:0,width:0,height:1080},oClip);
+const oRef=pen(psvg,`M${OX0},${oy(10000)} L${OX1},${oy(10000)}`,{color:'#176d8c',w:5});
+const oLineG=el('g',{'clip-path':'url(#oclip)'},psvg);
+el('path',{d:polyD(ORACLE.map((_,i)=>ox(i)),ORACLE.map(oy)),fill:'none',stroke:'#a13925','stroke-width':6,'stroke-linejoin':'round',filter:'url(#ink)'},oLineG);
+const oHead=el('circle',{r:11,fill:'#a13925',opacity:0},psvg);
+const DIV=ORACLE.findIndex(v=>v>10000); // first bar where reported equity leaves the ledger
+const oCallDot=el('circle',{cx:ox(DIV),cy:oy(ORACLE[DIV]),r:15,fill:'none',stroke:'#a13925','stroke-width':4,opacity:0},psvg);
+const oCallLine=pen(psvg,`M${ox(DIV)+14},${oy(ORACLE[DIV])-16} Q 360,740 432,712`,{color:'#a13925',w:3});
+const oStrike=pen(psvg,'M222,262 C 560,236 860,282 1165,244',{color:'#a13925',w:10});
+
+// --- panel A: card rows
+const ROWS=[
+ ['Ledger','every fill replayed with its own cash','PASS','pass',''],
+ ['Look-ahead','re-run with the future cut off','PASS','pass',''],
+ ['Costs','STT, GST, stamp duty, 2× slippage','PASS','pass',''],
+ ['Data','every expected bar accounted for','PASS','pass',''],
+ ['Random portfolios','beat the 95th of 1,000 runs',"CAN'T TELL",'tell','not run'],
+ ['Trades','at least 30 to judge',"CAN'T TELL",'tell','23 of 30'],
+ ['Sealed year','last 12 months, opened once','FAIL','fail','opened twice'],
+];
+const card=$('#card');
+const rowEls=ROWS.map((r,i)=>{const d=document.createElement('div');d.className='row';d.style.top=(100+i*96)+'px';
+  d.innerHTML=`<div class="nm mono">${r[0]}</div><div class="rl">${r[1]}</div><div class="st"></div><div class="sv mono ${r[3]}">${r[2]}</div><div class="nt mono">${r[4]}</div>`;
+  if(r[4]){d.querySelector('.sv').style.top='6px';d.querySelector('.nt').style.top='52px';}
+  card.appendChild(d);return d;});
+
+// --- panel B: tally + momentum chart
+const tally=el('g',{},wsvg); const TX0=2880-(7*56)/2;
+const tStrokes=[...Array(8)].map((_,i)=>pen(tally,`M${(TX0+i*56+(hash(i)*8-4)).toFixed(1)},430 L${(TX0+i*56+(hash(i+9)*8-4)).toFixed(1)},640`,{w:9}));
+const c8=TX0+7*56;
+const tCircle=pen(tally,`M${c8+30},418 C ${c8+74},470 ${c8+66},640 ${c8+4},664 C ${c8-52},680 ${c8-62},500 ${c8-34},446 C ${c8-14},404 ${c8+26},400 ${c8+50},430`,{color:'#176d8c',w:6});
+const mGrid=gridLines(wsvg,MX0,MX1,[my(200000),my(240000),my(280000)]);
+const mAx=[[200000,'₹2,00,000 start'],[240000,'₹2,40,000'],[280000,'₹2,80,000']].map(([v,s])=>{
+  const t=el('text',{x:MX0,y:my(v)-12,'font-family':'IBM Plex Mono','font-size':30,fill:'#536570',opacity:0},wsvg);t.textContent=s;return t;});
+const mX=[[0,'Nov 2025'],[.5,'May 2026'],[1,'Nov 2026']].map(([f,s],i)=>{
+  const t=el('text',{x:MX0+f*(MX1-MX0),y:950,'text-anchor':['start','middle','end'][i],'font-family':'IBM Plex Mono','font-size':30,fill:'#536570',opacity:0},wsvg);t.textContent=s;return t;});
+const mClip=el('clipPath',{id:'mclip'},el('defs',{},wsvg)); const mClipR=el('rect',{x:MX0-10,y:0,width:0,height:1080},mClip);
+el('path',{d:polyD(MOMENTUM.map((_,i)=>mx(i)),MOMENTUM.map(my))+`L${MX1},${my(200000)} L${MX0},${my(200000)}Z`,fill:'#086355',opacity:.09,'clip-path':'url(#mclip)'},wsvg);
+el('path',{d:polyD(MOMENTUM.map((_,i)=>mx(i)),MOMENTUM.map(my)),fill:'none',stroke:'#086355','stroke-width':6,'stroke-linejoin':'round',filter:'url(#ink)','clip-path':'url(#mclip)'},wsvg);
+const mHead=el('circle',{r:12,fill:'#086355',opacity:0},wsvg);
+const niftyDot=el('circle',{cx:MX1,cy:my(200000+NIFTY_PNL),r:12,fill:'#8a979c',opacity:0},wsvg);
+
+// --- panel C: random-portfolio band
+const cHl=hlRect(wsvg);
+const cAxis=pen(wsvg,`M${cx(-40000)},${CY+110} L${cx(100000)},${CY+110}`,{w:3,ink:false});
+const cTicks=[[-40000,'−₹40,000'],[0,'₹0'],[50000,'+₹50,000'],[100000,'+₹1,00,000']].map(([v,s],i)=>{
+  const g=el('g',{opacity:0},wsvg);
+  el('line',{x1:cx(v),x2:cx(v),y1:CY+100,y2:CY+122,stroke:'#1c2e38','stroke-width':3},g);
+  const t=el('text',{x:cx(v),y:CY+166,'text-anchor':['start','middle','middle','end'][i],'font-family':'IBM Plex Mono','font-size':30,fill:'#536570'},g);t.textContent=s;return g;});
+const cClip=el('clipPath',{id:'cclip'},el('defs',{},wsvg)); const cClipR=el('rect',{x:cx(P5)-6,y:CY-90,width:0,height:180},cClip);
+const cBand=el('g',{'clip-path':'url(#cclip)'},wsvg);
+el('rect',{x:cx(P5),y:CY-80,width:cx(P95)-cx(P5),height:160,fill:'url(#hatch)'},cBand);
+el('rect',{x:cx(P5),y:CY-80,width:cx(P95)-cx(P5),height:160,fill:'none',stroke:'#536570','stroke-width':3,filter:'url(#ink)'},cBand);
+const cMed=pen(wsvg,`M${cx(P50)},${CY-96} L${cx(P50)},${CY+96}`,{w:5});
+const cZero=el('line',{x1:cx(0),x2:cx(0),y1:CY-120,y2:CY+110,stroke:'#1c2e38','stroke-width':2,'stroke-dasharray':'6 8',opacity:0},wsvg);
+const cTrail=pen(wsvg,`M${cx(0)},${CY} L${cx(88572)},${CY}`,{color:'#086355',w:5,ink:false});
+const cDot=el('circle',{cx:cx(0),cy:CY,r:20,fill:'#086355',opacity:0},wsvg);
+
+// --- panel D: strike + highlighter
+const dHl=hlRect(wsvg);
+const dStrike=pen(wsvg,'M560,1440 C 820,1405 1100,1460 1380,1418',{color:'#a13925',w:12});
+
+/* ======================= STATE driven only by tl.time() ======================= */
+const CAM={s:1.7,fx:620,fy:250};
+const S={o:0,m:0,shake:0,c:0};
+const world=$('#world'), shakeEl=$('#shake'), grainEl=$('#grain'), rulesEl=$('#rules');
+const oNum=$('#o-num'), mNum=$('#m-num'), cLab=$('#c-dotlab');
+function interp(arr,p){const f=p*(arr.length-1),i=Math.min(arr.length-2,Math.floor(f)),u=f-i;return [i+u,arr[i]+(arr[i+1]-arr[i])*u];}
+function render(t){
+  const s=CAM.s*(1+.006*Math.sin(t*.6));
+  let tx=W/2-CAM.fx*s, ty=H/2-CAM.fy*s;
+  tx=Math.min(0,Math.max(W-WW*s,tx)); ty=Math.min(0,Math.max(H-WH*s,ty));
+  world.style.transform=`translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) scale(${s.toFixed(5)})`;
+  const k=Math.floor(t*12); grainEl.style.transform=`translate(${(hash(k)*96).toFixed(1)}px,${(hash(k+77)*96).toFixed(1)}px)`;
+  rulesEl.style.opacity=(.75+.25*Math.sin(t*.8)).toFixed(3);
+  const sh=S.shake; shakeEl.style.transform=sh>0.01?`translate(${(Math.sin(t*97.3)*sh*14).toFixed(2)}px,${(Math.cos(t*83.1)*sh*10).toFixed(2)}px)`:'none';
+  if(S.o>0){const [fi,v]=interp(ORACLE,S.o); const x=ox(fi);
+    oClipR.setAttribute('width',(x-OX0+12).toFixed(1)); oHead.setAttribute('cx',x.toFixed(1)); oHead.setAttribute('cy',oy(v).toFixed(1));
+    oHead.setAttribute('opacity',S.o<1?1:0); oNum.textContent=inr(v);} else {oClipR.setAttribute('width',0);oHead.setAttribute('opacity',0);oNum.textContent=inr(10000);}
+  if(S.m>0){const [fi,v]=interp(MOMENTUM,S.m); const x=mx(fi);
+    mClipR.setAttribute('width',(x-MX0+12).toFixed(1)); mHead.setAttribute('cx',x.toFixed(1)); mHead.setAttribute('cy',my(v).toFixed(1));
+    mHead.setAttribute('opacity',1); mNum.textContent=inr(v-200000,true);} else {mClipR.setAttribute('width',0);mHead.setAttribute('opacity',0);mNum.textContent='+₹0';}
+  const pv=S.c*88572, px=cx(pv); cDot.setAttribute('cx',px.toFixed(1)); cLab.style.left=px.toFixed(1)+'px'; cLab.textContent=inr(pv,true);
+}
+
+/* ======================= TIMELINE ======================= */
+const Q=new URLSearchParams(location.search);
+const DURATION=50;
+const tl=gsap.timeline({paused:true});
+const shot=(at,dur,s,fx,fy,ease='power2.inOut')=>tl.to(CAM,{s,fx,fy,duration:dur,ease},at);
+const draw=(p,at,dur,ease='power2.inOut')=>tl.fromTo(p,{strokeDashoffset:1},{strokeDashoffset:0,duration:dur,ease,immediateRender:false},at);
+const fadeIn=(t,at,dur=.5,extra={})=>tl.fromTo(t,{opacity:0,...(extra.from||{})},{opacity:1,duration:dur,ease:'power3.out',immediateRender:false,...(extra.to||{})},at);
+const swipe=(r,at)=>tl.fromTo(r,{attr:{width:0}},{attr:{width:+r.dataset.w},duration:.5,ease:'power3.out',immediateRender:false},at);
+const hudEl=$('#hud');
+const hud=(at,text)=>{tl.to(hudEl,{opacity:0,duration:.25},at);
+  tl.call(()=>{hudEl.textContent=text;},null,at+.26); if(text)tl.to(hudEl,{opacity:1,duration:.4},at+.3);};
+const doors={
+ inUp:(ch,e,at,{dur=.8,st=.024}={})=>{tl.fromTo(ch,{opacity:0,yPercent:60,scaleY:1.45},{opacity:1,yPercent:0,scaleY:1,duration:dur,ease:'power4.out',stagger:st,immediateRender:false},at);blurTween(tl,e,at,30,0,dur,VERT);},
+ inLeft:(ch,e,at,{dur=.75,st=.02}={})=>{tl.fromTo(ch,{opacity:0,xPercent:-45},{opacity:1,xPercent:0,duration:dur,ease:'power4.out',stagger:st,immediateRender:false},at);blurTween(tl,e,at,50,0,dur,{ease:'power4.out'});},
+ inRight:(ch,e,at,{dur=.75,st=.02}={})=>{tl.fromTo(ch,{opacity:0,xPercent:45},{opacity:1,xPercent:0,duration:dur,ease:'power4.out',stagger:{each:st,from:'end'},immediateRender:false},at);blurTween(tl,e,at,50,0,dur,{ease:'power4.out'});},
+ inDepth:(ch,e,at,{dur=1,st=.018}={})=>{tl.fromTo(ch,{opacity:0,scale:2.4},{opacity:1,scale:1,duration:dur,ease:'expo.out',stagger:{each:st,from:'center'},immediateRender:false},at);blurTween(tl,e,at,22,0,dur,{ease:'expo.out',ax:1,ay:1});},
+ inMask:(ch,e,at,{dur=1.1}={})=>{tl.set(ch,{opacity:1},at);
+   tl.fromTo(e,{clipPath:'inset(-30% 100% -30% 0%)'},{clipPath:'inset(-30% 0% -30% 0%)',duration:dur,ease:'power2.inOut',immediateRender:false},at); tl.set(e,{clipPath:'none'},at+dur);},
+ inWords:(ch,e,at,{dur=.6,st=.14}={})=>{const w=e.querySelectorAll('.wd');tl.set(ch,{opacity:1},at);
+   tl.fromTo(w,{opacity:0,yPercent:40,rotateX:-55},{opacity:1,yPercent:0,rotateX:0,duration:dur,ease:'back.out(1.6)',stagger:st,immediateRender:false},at);},
+ outUp:(ch,e,at,{dur=.4,st=.01}={})=>{tl.to(ch,{opacity:0,yPercent:-70,duration:dur,ease:'power2.in',stagger:st},at);blurTween(tl,e,at,0,45,dur+.1,{ease:'power2.in',...VERT});},
+ outLeft:(ch,e,at,{dur=.4,st=.01}={})=>{tl.to(ch,{opacity:0,xPercent:-60,duration:dur,ease:'power2.in',stagger:st},at);blurTween(tl,e,at,0,55,dur+.1,{ease:'power2.in'});},
+ outDown:(ch,e,at,{dur=.4,st=.01}={})=>{tl.to(ch,{opacity:0,yPercent:70,duration:dur,ease:'power2.in',stagger:st},at);blurTween(tl,e,at,0,45,dur+.1,{ease:'power2.in',...VERT});},
+};
+
+function build(){
+  // place highlighters under their words (world coordinates, measured with the camera at identity, before splitting)
+  world.style.transform='none';
+  const place=(rect,elm,root,{padX=14,top=.52,h=.4}={})=>{const r=elm.getBoundingClientRect(),o=root.getBoundingClientRect();
+    rect.setAttribute('x',(r.left-o.left-padX).toFixed(1));rect.setAttribute('y',(r.top-o.top+r.height*top).toFixed(1));
+    rect.dataset.w=(r.width+padX*2).toFixed(1);rect.setAttribute('width',0);rect.setAttribute('height',(r.height*h).toFixed(1));};
+  const fitS=Math.min(innerWidth/1920,innerHeight/1080); const stageEl=$('#stage'); const prev=stageEl.style.transform; stageEl.style.transform='none';
+  place(oHl,$('#o-call'),$('#page1'),{top:.15,h:.75}); place(cHl,$('#c-hl'),world); place(dHl,$('#d-t2'),world,{top:.45,h:.42});
+  stageEl.style.transform=prev;
+  const T={}; ['o-lab','o-cap','o-cap2','a-t1','a-t2','a-t3','a-t4','b-lab','b-lab2','m-lab','c-cap','d-t1','d-t2','d-word','d-url'].forEach(id=>{T[id]=splitChars($('#'+id));});
+
+  hud(0.1,'autopsy case oracle · price flat at ₹100 · the bug, reproduced');
+  /* ---- 1. the claim: the big number is the value under the pen ---- */
+  doors.inUp(T['o-lab'],$('#o-lab'),.15,{dur:.7});
+  fadeIn('#o-num',.25,.6,{from:{y:30},to:{y:0}});
+  tl.fromTo(S,{o:0},{o:1,duration:3.1,ease:'power1.inOut',immediateRender:false},.6);
+  shot(3.5,1.1,1,960,540);
+  /* ---- 2. the twin ledger ---- */
+  oGrid.forEach((g,i)=>draw(g,3.9+i*.12,.8,'power4.out'));
+  oAx.forEach((a,i)=>fadeIn(a,4.2+i*.1,.5));
+  doors.inRight(T['o-cap'],$('#o-cap'),4.9);
+  draw(oRef,5.2,1.3,'power1.inOut'); fadeIn('#o-ref',6.3,.5);
+  tl.fromTo(oCallDot,{opacity:0,attr:{r:2}},{opacity:1,attr:{r:15},duration:.45,ease:'back.out(2.4)',immediateRender:false},6.7);
+  draw(oCallLine,6.95,.4,'power2.out');
+  fadeIn('#o-call',7.2,.45,{from:{x:-16},to:{x:0}});
+  shot(7.4,.95,2.05,430,760);
+  swipe(oHl,8.1);
+  shot(9.2,.9,1,960,540);
+  /* ---- 3. invented money ---- */
+  doors.outUp(T['o-cap'],$('#o-cap'),7.25);
+  draw(oStrike,9.9,.5,'power2.out');
+  tl.to('#o-num',{color:'#a13925',duration:.3},9.9);
+  fadeIn('#o-true',10.35,.6,{from:{y:24},to:{y:0}});
+  doors.inMask(T['o-cap2'],$('#o-cap2'),10.6);
+  tl.fromTo('#page1',{rotateY:0,transformPerspective:2600},{rotateY:-112,transformPerspective:2600,duration:1.15,ease:'power2.in',immediateRender:false},12.0);
+  tl.fromTo('#p1shade',{opacity:0},{opacity:1,duration:1.15,ease:'power1.in',immediateRender:false},12.0);
+  tl.set('#page1',{autoAlpha:0},13.16);
+  hud(12.0,'');
+  /* ---- 4. the method: verdict card ---- */
+  doors.inWords(T['a-t1'],$('#a-t1'),12.85);
+  doors.inWords(T['a-t2'],$('#a-t2'),13.1);
+  fadeIn('#card',13.5,.7,{from:{y:40,scale:.97},to:{y:0,scale:1}});
+  fadeIn('#card-h',13.9,.5);
+  rowEls.forEach((r,i)=>tl.fromTo(r,{opacity:0,x:-30},{opacity:1,x:0,duration:.55,ease:'power3.out',immediateRender:false},14.2+i*.36));
+  shot(13.9,1.0,1.32,1320,420);
+  shot(15.4,2.6,1.32,1320,760,'sine.inOut');
+  shot(18.1,.9,1,960,540);
+  /* ---- 5. real data ---- */
+  doors.outLeft(T['a-t1'],$('#a-t1'),18.9); doors.outLeft(T['a-t2'],$('#a-t2'),19.0);
+  shot(19.1,1.2,1,2880,540);
+  hud(19.6,'Real Kite data · sealed year 6 Nov 2025 – 5 Nov 2026 · costs + 2× slippage, before tax');
+  tStrokes.forEach((p,i)=>draw(p,19.9+i*.11,.32,'power2.out'));
+  doors.inUp(T['b-lab'],$('#b-lab'),20.3);
+  tStrokes.slice(0,7).forEach((p,i)=>tl.to(p,{stroke:'#a13925',opacity:.3,duration:.3},21.5+i*.06));
+  draw(tCircle,21.9,.55,'power2.out');
+  doors.outUp(T['b-lab'],$('#b-lab'),21.9);
+  doors.inUp(T['b-lab2'],$('#b-lab2'),22.2);
+  doors.outDown(T['b-lab2'],$('#b-lab2'),23.3);
+  tl.fromTo(tally,{attr:{transform:'translate(0 0) scale(1)'}},{attr:{transform:`translate(${(3560-2880*.38).toFixed(1)} ${(150-540*.38).toFixed(1)}) scale(.38)`},duration:.9,ease:'power3.inOut',immediateRender:false},23.3);
+  mGrid.forEach((g,i)=>draw(g,23.6+i*.12,.8,'power4.out'));
+  mAx.forEach((a,i)=>fadeIn(a,23.9+i*.1,.5)); mX.forEach((a,i)=>fadeIn(a,24.0+i*.1,.5));
+  doors.inLeft(T['m-lab'],$('#m-lab'),24.1);
+  fadeIn('#m-num',24.3,.5,{from:{y:24},to:{y:0}});
+  tl.fromTo(S,{m:0},{m:1,duration:2.7,ease:'power1.inOut',immediateRender:false},24.5);
+  shot(24.6,2.6,1.06,2880,560,'sine.inOut');
+  fadeIn('#m-pct',27.25,.5,{from:{y:16},to:{y:0}});
+  tl.fromTo(niftyDot,{opacity:0,attr:{r:2}},{opacity:1,attr:{r:12},duration:.45,ease:'back.out(2.4)',immediateRender:false},27.5);
+  fadeIn('#nifty-lab',27.7,.45);
+  shot(27.4,1.0,1.5,3400,700);
+  /* ---- 6. luck check ---- */
+  shot(28.7,1.15,1,2880,1620);
+  hud(28.9,'Random baseline: 1,000 runs, seed 0, same rebalance days · checked after the verdict');
+  draw(cAxis,29.4,.7,'power3.out'); cTicks.forEach((g,i)=>fadeIn(g,29.6+i*.08,.4));
+  tl.fromTo(cClipR,{attr:{width:0}},{attr:{width:cx(P95)-cx(P5)+12},duration:.9,ease:'power2.inOut',immediateRender:false},29.7);
+  fadeIn('#c-band',30.1,.5); draw(cMed,30.4,.35,'power2.out'); fadeIn('#c-med',30.6,.4);
+  tl.fromTo(cZero,{opacity:0},{opacity:.6,duration:.3,immediateRender:false},30.6);
+  tl.fromTo(cDot,{opacity:0},{opacity:1,duration:.2,immediateRender:false},30.85); fadeIn('#c-dotlab',30.85,.3);
+  tl.fromTo(S,{c:0},{c:1,duration:1.35,ease:'power3.inOut',immediateRender:false},30.95);
+  draw(cTrail,30.95,1.35,'power3.inOut');
+  doors.inDepth(T['c-cap'],$('#c-cap'),31.7);
+  swipe(cHl,32.5);
+  shot(31.0,2.2,1.05,2900,1600,'sine.inOut');
+  /* ---- 7. the verdict ---- */
+  shot(33.4,1.3,.5,1920,1080,'power3.inOut');
+  hud(33.5,'');
+  doors.outUp(T['c-cap'],$('#c-cap'),34.6); tl.to(cHl,{opacity:0,duration:.3},34.6);
+  shot(35.1,1.2,1.3,1330,560,'power3.inOut');
+  hud(35.6,'Verdict computed on the locked final year');
+  rowEls.forEach((r,i)=>{const at=36.2+i*.3;
+    tl.to(r.querySelector('.st'),{opacity:0,duration:.15},at);
+    tl.fromTo(r.querySelector('.sv'),{opacity:0,scale:1.6},{opacity:1,scale:1,duration:.32,ease:'back.out(2)',immediateRender:false,transformOrigin:'100% 50%'},at);
+    if(r.querySelector('.nt').textContent)fadeIn(r.querySelector('.nt'),at+.15,.3);});
+  shot(37.8,.8,1,960,540);
+  tl.fromTo('#stamp',{opacity:0,scale:2.3,rotate:-14},{opacity:1,scale:1,rotate:-8,duration:.32,ease:'power4.in',immediateRender:false},38.7);
+  tl.fromTo(S,{shake:1},{shake:0,duration:.5,ease:'power2.out',immediateRender:false},39.02);
+  doors.inUp(T['a-t3'],$('#a-t3'),39.2); doors.inUp(T['a-t4'],$('#a-t4'),39.4);
+  /* ---- 8. the decision ---- */
+  shot(41.6,1.2,1,960,1620);
+  hud(41.7,'');
+  doors.inUp(T['d-t1'],$('#d-t1'),42.40);
+  draw(dStrike,43.3,.5,'power2.out');
+  tl.to('#d-t1',{color:'#8a979c',duration:.3},43.40);
+  doors.inMask(T['d-t2'],$('#d-t2'),43.80,{dur:1.3});
+  swipe(dHl,45.00);
+  shot(43.6,2.4,1.06,960,1560,'sine.inOut');
+  tl.to(['#d-t1',dStrike],{y:-170,opacity:.1,duration:.8,ease:'power2.inOut'},46.00);
+  tl.to(['#d-t2',dHl],{y:-170,opacity:.12,duration:.8,ease:'power2.inOut'},46.00);
+  doors.inDepth(T['d-word'],$('#d-word'),46.50);
+  doors.inUp(T['d-url'],$('#d-url'),47.20,{dur:.7,st:.012});
+  shot(46.2,3.8,1.035,960,1640,'sine.inOut');
+  tl.to({},{duration:.01},DURATION);
+}
+
+/* ======================= GLUE ======================= */
+const stage=$('#stage');
+const fit=()=>{const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`translate(-50%,-50%) scale(${s})`;};
+addEventListener('resize',fit);fit();
+const clock=$('#clock'),scrub=$('#scrub'),btn=$('#btn-play');let scrubbing=false;
+const seek=t=>{tl.pause();tl.time(t,false);render(t);};
+window.OPENER={tl,DURATION,seek,ready:false,W,H};
+document.fonts.ready.then(()=>{build();tl.time(0);render(0);window.OPENER.ready=true;
+  (function frame(){const t=tl.time();render(t);clock.textContent=t.toFixed(2)+'s';if(!scrubbing)scrub.value=String(t/DURATION*1000);requestAnimationFrame(frame);})();
+  if(!Q.has('clean'))tl.play(0);});
+const toggle=()=>{if(tl.paused()||tl.progress()>=1){if(tl.progress()>=1)tl.progress(0);tl.play();btn.textContent='Pause';}else{tl.pause();btn.textContent='Play';}};
+btn.onclick=toggle;$('#btn-restart').onclick=()=>{tl.pause(0);tl.play();btn.textContent='Pause';};
+scrub.addEventListener('pointerdown',()=>{scrubbing=true;tl.pause();btn.textContent='Play';});
+addEventListener('pointerup',()=>scrubbing=false);
+scrub.addEventListener('input',()=>{tl.pause();tl.time(scrub.value/1000*DURATION);});
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();toggle();}if(/^[rR]$/.test(e.key)){tl.pause(0);tl.play();}if(/^[hH]$/.test(e.key))$('#ui').classList.toggle('on');});
+if(Q.has('debug'))$('#ui').classList.add('on');
+tl.eventCallback('onComplete',()=>{tl.play(0);});
+</script>
+</body>
+</html>

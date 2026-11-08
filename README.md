@@ -33,6 +33,11 @@ an edge planted in it, they score **PASS**. The tool can tell the two apart.
 
 Paper only: it never places orders, and none of it is investment advice.
 
+[![Watch the 50-second demo](docs/demo/poster.jpg)](docs/demo/oracle-autopsy-demo.mp4)
+
+**[Watch the 50-second demo](docs/demo/oracle-autopsy-demo.mp4)**: the bug, the checks, and the first
+real strategy to reach the sealed year (still NO-GO). [How it was made](docs/demo/README.md).
+
 ## Use it yourself
 
 You need Python 3.11+, a Zerodha account with a Kite Connect app (₹500/month)
