@@ -91,7 +91,5 @@ hide the leak.
   Its import-time global warning suppression is contained by the loader so it
   cannot suppress unrelated test warnings.
 
-Scope ends at Task 5. No git commands, source-project edits, downloads, push,
-deployment or Task 6 work. The shared SecondBrain vault is outside this session's
-writable roots and no Basic Memory tool is available; this local handoff records
-the decisions for the owner to carry into the project note and ACTIVE_STATE.
+The original case reproduction required no source-project edits, market-data
+downloads or deployment. It isolates the three findings above.

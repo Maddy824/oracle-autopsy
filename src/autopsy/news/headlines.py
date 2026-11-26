@@ -1,7 +1,7 @@
 """Economic Times markets headlines: context for the owner's brief, archived as first seen.
 
 ET's RSS terms allow personal, non-commercial use with attribution and a
-personal-storage exception (docs/research/sources/2026-11-06-codex-factors-and-news.md).
+personal-storage exception (docs/research/sources/2026-11-06-factors-and-news.md).
 We keep only what the feed supplies (headline, link, stated publication time)
 plus our first-seen time, append-only, so a later test cannot use hindsight.
 No article pages are fetched; nothing is summarised or scored.

@@ -14,8 +14,10 @@ whole tool in one story:
 4. It is still NO-GO: 23 trades, where 30 are needed, and the sealed year was
    opened twice. Paper trading only.
 
-Every number comes from the repo's own reports (`autopsy case oracle` and the
-monthly-momentum verdict). None was made up for the video.
+The flat-market result is reproducible with `autopsy case oracle`. The
+monthly-momentum figures are historical research recorded in the
+[dated notes](../research/2026-11-06-monthly-momentum-prereg.md), not a result
+that can be reproduced without the private data. The final verdict was NO-GO.
 
 ## How it is made
 
@@ -25,7 +27,7 @@ plays and loops; add `?debug=1` for a scrub bar. Everything moves from one GSAP
 timeline, with no clock or randomness, so every render is identical.
 [style-brief.md](style-brief.md) records the design decisions and the shot list.
 
-It follows two open-source Claude skills, both MIT-licensed:
+Animation and chart-design references (both MIT-licensed):
 
 - [Bang Motion](https://github.com/bangtutorial/bang-motion): a camera that moves
   through one world instead of slides, the text animations, and the

@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 dependencies = ["pandas", "numpy", "pyarrow", "httpx"]
 
 [project.optional-dependencies]
-dev = ["pytest", "hypothesis"]
+dev = ["pytest", "hypothesis", "gymnasium", "ruff"]
 oracle = ["gymnasium"]
 
 [project.scripts]
@@ -27,3 +27,11 @@ autopsy = ["rates/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+# Keep the copied environment and its historical bugs byte-for-byte intact.
+extend-exclude = ["cases/oracle/original"]
+
+[tool.ruff.lint]
+select = ["E4", "E9", "F"]

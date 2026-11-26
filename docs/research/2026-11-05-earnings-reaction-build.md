@@ -81,10 +81,7 @@ truncation, actual-fill stops, hold counting, risk sizing, ranking/capacity,
 four trials, CLI filtering/exclusion, refusals, snapshots/hashes and baseline
 season timing.
 
-Shared-brain handoff: read the vault index, ACTIVE_STATE and binding rules.
-The sandbox only permits writes in this workspace and temporary directories,
-so `~/SecondBrain` and its ACTIVE_STATE could not be updated. This file retains
-the decisions and handoff locally for the owner to reconcile into the vault.
+This file retains the implementation decisions, validation and remaining gaps.
 
 ## Full-portfolio follow-up, 2026-11-06
 

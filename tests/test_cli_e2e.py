@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import sysconfig
 import time
 
 import pytest
@@ -57,13 +58,28 @@ def test_e2e_synthetic(tmp_path, monkeypatch, record_property):
     assert invoke(commands[-1], root).returncode == 2
 
 
-def test_e2e_oracle(tmp_path):
-    result = invoke(['case', 'oracle', '--report', str(tmp_path / 'oracle.html')], tmp_path / 'private')
+def test_e2e_offline_quickstart(tmp_path):
+    """The installed CLI must run both README demos without broker setup."""
+    script = Path(sysconfig.get_path('scripts')) / ('autopsy.exe' if os.name == 'nt' else 'autopsy')
+    env = {**os.environ, 'HOME': str(tmp_path), 'AUTOPSY_DATA_DIR': str(tmp_path / 'private')}
+
+    def run(*args):
+        return subprocess.run([str(script), *args], cwd=tmp_path, env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    result = run('case', 'oracle', '--report', 'out/oracle-report.html')
     assert result.returncode == 1, result.stdout + result.stderr
     assert 'ledger: FAIL' in result.stdout and 'bar 11' in result.stdout
-    html = (tmp_path / 'oracle.html').read_text()
+    html = (tmp_path / 'out/oracle-report.html').read_text()
     assert 'NO-GO' in html and 'FAIL' in html and 'Reference equity' in html
     assert '160,000' in html and '10,000' in html
+    result = run('alerts', 'replay', '--source', 'synthetic', '--days', '60',
+                 '--seed', '17', '--out', 'out/alerts.html')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith('FAIL: 203 paper trades over 60 sessions')
+    page = (tmp_path / 'out/alerts.html').read_text()
+    assert 'PAPER BUY' in page and 'invented random walk prices' in page
+    assert not (tmp_path / 'private').exists()
 
 
 @pytest.mark.parametrize('args', [

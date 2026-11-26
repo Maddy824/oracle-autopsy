@@ -6,7 +6,7 @@ import pytest
 
 from autopsy.research.lock import Lock, hash_prices
 from autopsy.research.trials import TrialLog
-from autopsy.research.walkforward import Pick, select, walk_forward
+from autopsy.research.walkforward import select, walk_forward
 from autopsy.strategies import REGISTRY, Strategy, registry_hash
 from synthetic_bars import opening_range_bars
 
