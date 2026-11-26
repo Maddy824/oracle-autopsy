@@ -1,14 +1,13 @@
 # Strategy and tool research: what to build next
 
-**Date:** 5 November 2026. **Researchers:** Claude (web, Reddit, YouTube, GitHub
-via Agent Reach) and Codex (four independent web-search runs, including X).
-Full Codex reports are in [`sources/`](sources/). Nothing here is investment
+**Date:** 5 November 2026. Research notes from web, Reddit, YouTube, GitHub
+and X sources. Full research notes are in [`sources/`](sources/). Nothing here is investment
 advice; no strategy has reached GO.
 
 ## 1. Bottom line
 
 1. **Build one strategy first: long-only earnings-reaction continuation,
-   held for days, not minutes.** Claude and Codex reached this independently.
+   held for days, not minutes.** Independent research notes converged on this candidate.
    Intraday ORB stays as a benchmark, not the main bet.
 2. **Day trading is the hardest place to make money.** SEBI's July 2024 study:
    71% of individual cash-intraday traders lost money in FY23, 80% of those
@@ -17,8 +16,8 @@ advice; no strategy has reached GO.
    (₹91,685 crore). Our own cost table says an intraday round trip costs
    about 0.11% before slippage, about 0.3% with the final gate's doubled
    slippage, every single trade.
-3. **Honest odds: roughly 5–20% that the strategy passes every gate** (two
-   separate Codex estimates; Claude agrees with the range). A NO-GO is the
+3. **Speculative estimate at the time: roughly 5–20% that the strategy passes
+   every gate** (not an empirical probability). A NO-GO is the
    most likely result and is still useful: it stops real money going in.
 4. **Daily login is solved without automating Kite.** Use Upstox's free,
    read-only **Analytics Token (valid one year)** for unattended daily data and
@@ -44,7 +43,7 @@ advice; no strategy has reached GO.
 | FII/DII flows | Returns drive flows as much as flows drive returns; data is aggregate and revised | Skip |
 | Delivery % | Small samples; no tradable rule shown | Skip for now |
 | India VIX / Nifty trend | Useful as a risk filter, not a signal | Use as regime filter |
-| News sentiment (text) | No complete, timestamped historical news archive; an AI labelling old headlines already knows what happened next, which leaks the future into the backtest | **Do not use historically** |
+| News sentiment (text) | No complete, timestamped historical news archive; retrospective labelling can incorporate what happened next, leaking the future into the backtest | **Do not use historically** |
 | Options selling | SEBI FY26: option sellers were the only group with positive median returns, but only ~2% of traders; tail losses can be unlimited | Out of scope |
 
 ## 3. The strategy to research (pre-registered)
@@ -98,14 +97,14 @@ members or on timestamps we do not have, profit that disappears at doubled
 slippage, or failing the random-entry test. Do not re-tune against the sealed
 year. Fewer than 30 trades is CAN'T TELL, not a pass.
 
-### Where Claude and Codex differed
+### Differences between research notes
 
-- **Holding period:** Codex's proposal said 10 days, its deep report 5 days,
+- **Holding period:** The strategy proposal said 10 days, the deeper review 5 days,
   and the literature 64 days. Resolved by testing 5, 10 and 20 as fixed variants.
-- **Surprise measure:** Codex's deep report suggested year-on-year EPS growth
+- **Surprise measure:** The deeper review suggested year-on-year EPS growth
   from the filing. That needs parsing results documents point-in-time, so it
   is a phase-2 refinement; the price reaction is available now.
-- **Extra factors:** Claude also considered a volume-surge confirmation and
+- **Extra factors:** Other notes also considered a volume-surge confirmation and
   sector relative strength. Both were dropped for now: each adds trials and
   makes overfitting more likely.
 
@@ -138,7 +137,7 @@ year. Fewer than 30 trades is CAN'T TELL, not a pass.
 
 **Risk rules for any later real money**
 - Only after GO, then at least 8 weeks (preferably 3 months) of paper alerts.
-- Ring-fenced amount you can afford to lose (Codex example: ₹25,000), no
+- Ring-fenced amount you can afford to lose (example: ₹25,000), no
   leverage, no top-ups. Stop at a 5% drawdown of that amount, any data or
   execution integrity failure, or slippage persistently above the tested
   budget.
@@ -187,7 +186,7 @@ day, made as short as possible:
 - **YouTube:** Tradetron's honest-profitability explainer (SEBI data and cost
   arithmetic) and Ceta Research's earnings-drift study were the useful ones;
   most videos sell courses or "passive income".
-- **X (via Codex):** no post proved a repeatable after-cost NSE strategy.
+- **X:** no post proved a repeatable after-cost NSE strategy.
   Useful confirmations: Nithin Kamath on the ₹500 data API and the closing
   auction, Upstox's one-year Analytics Token launch (20 Mar 2026), FYERS
   ending refresh-token sessions (1 Apr 2026), Dhan tokens limited to 24 hours.

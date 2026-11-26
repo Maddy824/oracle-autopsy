@@ -101,7 +101,7 @@ def _chart(record, ledger, section):
         return 90 + 770 * i / max(1, len(times) - 1)
     def y(value):
         return 240 - 210 * (value - low) / (high - low)
-    parts = [f'<svg viewBox="0 0 900 280" role="img" aria-label="Equity and reference ledger chart">',
+    parts = ['<svg viewBox="0 0 900 280" role="img" aria-label="Equity and reference ledger chart">',
              '<title>Equity and reference ledger. Select a point to inspect its fills.</title>']
     for fraction in (0, .5, 1):
         value = low + (high - low) * fraction

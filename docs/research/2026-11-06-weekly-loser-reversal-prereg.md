@@ -1,7 +1,7 @@
 # Pre-registration: weekly_loser_reversal (1-10 day swing)
 
 **Frozen:** 6 November 2026, before any code or any real-data result for this
-family. Proposal and evidence: [`sources/2026-11-06-codex-swing-proposal.md`](sources/2026-11-06-codex-swing-proposal.md).
+family. Proposal and evidence: [`sources/2026-11-06-swing-proposal.md`](sources/2026-11-06-swing-proposal.md).
 Trial history at freeze: only `earnings_reaction` (4 trials) has touched real
 data; `short_reversal` has never been run on it. Not investment advice.
 

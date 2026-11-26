@@ -1,9 +1,9 @@
 # Daily brief: how traders decide, and what to show each day
 
-**Date:** 5 November 2026. **Researchers:** Claude (Reddit, YouTube, web via
-Agent Reach) and Codex (six-perspective web research). Full Codex reports:
-[`sources/2026-11-05-codex-daily-decisions.md`](sources/2026-11-05-codex-daily-decisions.md)
-and [`sources/2026-11-05-codex-results-filings.md`](sources/2026-11-05-codex-results-filings.md).
+**Date:** 5 November 2026. Research notes from web, Reddit and YouTube
+sources, including six perspectives on daily decisions. Full research notes:
+[`sources/2026-11-05-daily-decisions.md`](sources/2026-11-05-daily-decisions.md)
+and [`sources/2026-11-05-results-filings.md`](sources/2026-11-05-results-filings.md).
 Builds on [`2026-11-05-strategy-and-tool-research.md`](2026-11-05-strategy-and-tool-research.md).
 Not investment advice.
 
@@ -11,8 +11,7 @@ Not investment advice.
 
 1. **The brief should answer "what changes my next action?"**, not "what
    happened in the market". Open positions and scheduled exits come first,
-   then today's earnings candidates, then a small context strip. Claude and
-   Codex agree.
+   then today's earnings candidates, then a small context strip.
 2. **Less is better.** A lab experiment (Review of Accounting Studies, 2009)
    held information quality fixed: more information made traders more
    confident and more aggressive, and less wealthy. Barber and Odean (2008)
@@ -68,7 +67,7 @@ Evening edition **18:30 IST** (after official data arrives), plus an
 
 Rules:
 - At most three news items, each with publisher, link, publication time and
-  first-seen time. An LLM may summarise **today's** retrieved items only;
+  first-seen time. Summaries may use **today's** retrieved items only;
   every number must map to a source line; headline-only summaries are
   labelled; it never fills in missing earnings figures.
 - If holdings cannot be read, show **PORTFOLIO UNRECONCILED**, never zero.
@@ -109,9 +108,8 @@ days too. Review weekly; score rule-following separately from profit.
 
 For every input, keep: source URL, document version and checksum, event time,
 stated publication time, first-seen time, ingestion time, revision status,
-and the brief actually delivered (including any LLM output and prompt
-version). Append only; never overwrite with later revised numbers (FII/DII
-provisional data in particular). Re-running a future model over old news
+and the brief actually delivered (including any summary and its version). Append only; never overwrite with later revised numbers (FII/DII
+provisional data in particular). Producing new summaries of old news
 does not recreate what was knowable then.
 
 Candidate factors to pre-register in about a year: reaction size, abnormal

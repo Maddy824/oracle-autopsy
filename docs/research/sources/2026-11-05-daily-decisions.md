@@ -97,7 +97,7 @@ For US events, BLS offers a subscribable calendar; the Fed publishes meeting dat
 | NewsAPI | Free development tier: 24-hour article delay, one-month history, 100 requests/day. Terms exclude production use, including internal production. Listed Business price is $449/month: poor fit for small capital. [Pricing](https://newsapi.org/pricing), [terms](https://newsapi.org/terms) |
 | Google News RSS; Moneycontrol RSS | Discovery candidates, but supported automation terms, dependable latency and complete archives were **UNVERIFIED** here. Do not make either a critical dependency. |
 
-**LLM use:** Useful for compressing today’s retrieved material. Require original headline, publisher, link, publication time and first-seen time; separate reported facts from interpretation. Every number must map to a source passage. Validate company, quarter, units and consolidated/standalone basis. Label headline-only summaries accordingly. Deduplicate syndicated stories; abstain on contradictions. Never let generated prose supply missing earnings figures or independently authorise trades.
+**Summarisation:** Useful for compressing today’s retrieved material. Require original headline, publisher, link, publication time and first-seen time; separate reported facts from interpretation. Every number must map to a source passage. Validate company, quarter, units and consolidated/standalone basis. Label headline-only summaries accordingly. Deduplicate syndicated stories; abstain on contradictions. Never let generated prose supply missing earnings figures or independently authorise trades.
 
 **P6 — The skeptical case for less information**
 
@@ -160,11 +160,11 @@ For each observation, retain—where licensed:
 - Event time, stated publication time, first-seen time, ingestion time and feature-ready time.
 - Original timezone, reporting period, units, revision status and source permissions.
 - Point-in-time universe membership, identifiers, raw prices and corporate-action records.
-- Parser/model/prompt versions, extracted evidence and the actual brief delivered.
+- Parser and summarisation versions, extracted evidence and the actual brief delivered.
 
 Use append-only revisions and explicit “supersedes” links. A replay may use a feature only after its required data and computation were available. Backfilled records must not appear as though captured live.
 
-Store missing-source intervals and deduplicate NSE/BSE copies without losing their separate timestamps. Archive calendars before events occur. Retain contemporaneous LLM outputs; rerunning next year’s model over old news does not recreate today’s knowledge.
+Store missing-source intervals and deduplicate NSE/BSE copies without losing their separate timestamps. Archive calendars before events occur. Retain contemporaneous summaries; producing new summaries of old news does not recreate today’s knowledge.
 
 After a year, test a small preregistered set with realistic costs and earnings-cluster-aware validation. One year may still contain too few independent events.
 

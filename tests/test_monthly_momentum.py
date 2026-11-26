@@ -15,7 +15,7 @@ from autopsy.engine import Rebalance, Signal, _prepare_prices, _run_prepared, ru
 from autopsy.research.lock import hash_prices
 from autopsy.research.trials import TrialLog
 from autopsy.research.walkforward import FoldResult, Pick, slippage_grid_for, walk_forward
-from autopsy.stats import MinTradesError, _MonthlyPortfolio, _round_trips, random_portfolio_baseline
+from autopsy.stats import _MonthlyPortfolio, _round_trips, random_portfolio_baseline
 from autopsy.strategies import REGISTRY
 from autopsy.strategies import monthly_momentum as momentum
 from test_verdict import seal

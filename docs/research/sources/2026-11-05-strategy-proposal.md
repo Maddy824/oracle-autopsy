@@ -37,7 +37,7 @@
 
    Sector relative strength and VIX are sourceable, but add selection choices; exclude initially. Sector mappings must be historical. [F&O bans](https://www.nseindia.com/static/products-services/equity-derivatives-risk-management-sec-ban) concern derivatives, not a prohibition on buying cash shares; any factor requires the contemporaneous next-day ban file.
 
-   **Not currently credible:** historical news sentiment or analyst earnings surprises. We lack complete timestamped original articles, revision histories and point-in-time consensus. Retrospective LLM labels risk hindsight and training contamination. Price reaction is explicitly a proxy, not measured earnings surprise.
+   **Not currently credible:** historical news sentiment or analyst earnings surprises. We lack complete timestamped original articles, revision histories and point-in-time consensus. Retrospective labels risk hindsight and contamination from later information. Price reaction is explicitly a proxy, not measured earnings surprise.
 
 3. **Preregister three configurations**
 

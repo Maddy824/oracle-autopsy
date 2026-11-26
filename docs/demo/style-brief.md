@@ -15,7 +15,7 @@ Fonts: Fraunces (display serif, editorial) / IBM Plex Mono (numbers, ledger, tab
 Emphasis: one form — highlighter swipe, used twice.
 Background direction: editorial light + paper & print. Surface: warm paper + ruled ledger lines + two soft teal/rust light blobs + live grain (≥ 2 layers).
 Background motion (§7c): #4 live paper grain (offset from t) + #8 ruled lines breathing.
-Signature motion: the pen — every line, tick, strike and circle draws itself stroke by stroke (drawing-skill idea; Huashu "pure code drawing"), with a slight ink wobble.
+Signature motion: the pen — every line, tick, strike and circle draws itself stroke by stroke (drawing reference: Huashu "pure code drawing"), with a slight ink wobble.
 Object render: ink line drawing, one family.
 Transitions: page turn (object wipe, once); camera pan / tilt across one continuous ledger world (4 panels); one pull-out to the whole map then dive (special); shot-size changes for emphasis.
 Special moment: NO-GO stamp slam with paper shake.

@@ -30,7 +30,6 @@ carry price_basis='adjusted'; never apply corporate actions a second time.
 
 from datetime import date, datetime
 import hashlib
-import json
 from numbers import Integral
 from pathlib import Path
 import re

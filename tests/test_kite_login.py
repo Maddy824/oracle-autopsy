@@ -421,10 +421,10 @@ def test_launchagent_template():
         assert config[key].startswith('__HOME__/oracle-autopsy-data/logs/')
 
 
-def test_pasted_phone_redirect_logs_in_with_matching_state(files):
+def test_pasted_phone_redirect_logs_in_with_matching_state(files, idle_server):
     seen = []
     with KiteLoginListener(*files, port=0, wait='90s', exchange=lambda c, s, token: seen.append(token) or {'ok': 1}) as listener:
-        bad = f'http://127.0.0.1:8742/kite?action=login&status=success&request_token=Tok&state=wrong'
+        bad = 'http://127.0.0.1:8742/kite?action=login&status=success&request_token=Tok&state=wrong'
         assert listener.accept_pasted('no url here') is False
         assert listener.accept_pasted(bad) is False and listener.failed_attempts == 1
         good = f'here: http://127.0.0.1:8742/kite?action=login&type=login&status=success&request_token=Tok&state={listener.state}'

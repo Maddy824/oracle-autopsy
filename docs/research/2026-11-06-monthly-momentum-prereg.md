@@ -2,7 +2,7 @@
 
 **Frozen:** 6 November 2026, before any code or real-data result for this
 family. Evidence and source permissions:
-[`sources/2026-11-06-codex-factors-and-news.md`](sources/2026-11-06-codex-factors-and-news.md).
+[`sources/2026-11-06-factors-and-news.md`](sources/2026-11-06-factors-and-news.md).
 Real-data trials before this family: 6 (earnings_reaction 4, weekly_loser_reversal 2),
 all NO-GO. Not investment advice.
 
